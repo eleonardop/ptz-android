@@ -36,4 +36,12 @@ class SettingsCodecTest {
         assertEquals(100, s.motion.speedPercent)
         assertTrue(s.cameras.isEmpty())
     }
+
+    @Test
+    fun video_ligadoPorPadrao_eAoAtualizarDaVersaoAntiga() {
+        assertTrue(AppSettings().videoEnabled)
+        assertTrue(SettingsCodec.fromJson("""{"version":1,"videoEnabled":false}""").videoEnabled)
+        val desligado = AppSettings(videoEnabled = false)
+        assertEquals(false, SettingsCodec.fromJson(SettingsCodec.toJson(desligado)).videoEnabled)
+    }
 }

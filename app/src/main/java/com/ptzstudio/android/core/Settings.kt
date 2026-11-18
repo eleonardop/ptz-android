@@ -26,7 +26,8 @@ data class AppSettings(
     val presetNames: List<String> = defaultPresetNames(),
     /** Códigos de tecla que o usuário ensinou na detecção (ex.: L4/R4 que o Android não conhece). */
     val learnedKeys: Map<Int, PadButton> = emptyMap(),
-    val videoEnabled: Boolean = false,
+    /** Vídeo ao vivo ligado por padrão. */
+    val videoEnabled: Boolean = true,
 ) {
     val selectedCamera: CameraConfig?
         get() = cameras.firstOrNull { it.id == selectedCameraId } ?: cameras.firstOrNull()
@@ -39,9 +40,11 @@ data class AppSettings(
 
 /** Conversão das configurações para JSON (e de volta), tolerante a arquivos antigos ou incompletos. */
 object SettingsCodec {
+    const val VERSION = 2
+
     fun toJson(s: AppSettings): String {
         val o = JSONObject()
-        o.put("version", 1)
+        o.put("version", VERSION)
         o.put("cameras", JSONArray().apply {
             s.cameras.forEach { c ->
                 put(JSONObject().apply {
@@ -144,7 +147,8 @@ object SettingsCodec {
                 motion = motion,
                 presetNames = names,
                 learnedKeys = learned,
-                videoEnabled = o.optBoolean("videoEnabled", false),
+                // Até a versão 1 o vídeo vinha desligado por padrão: quem atualiza passa a ter o vídeo ligado.
+                videoEnabled = if (o.optInt("version", 1) < 2) true else o.optBoolean("videoEnabled", true),
             )
         } catch (_: Exception) {
             AppSettings()
