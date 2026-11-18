@@ -92,7 +92,9 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         TopBar(cam?.name ?: "PTZ Studio", link, gamepad, onCameras, onSettings)
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val landscape = maxWidth > maxHeight
+            val boxW = maxWidth
+            val boxH = maxHeight
+            val landscape = boxW > boxH
             val video: @Composable (Modifier) -> Unit = { m ->
                 VideoCard(engine, settings, m) { fullscreen = true }
             }
@@ -109,7 +111,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                         Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        JoystickAndZoom(engine, joystickSize = min(200f, maxHeight.value * 0.52f).dp)
+                        JoystickAndZoom(engine, joystickSize = min(200f, boxH.value * 0.52f).dp)
                         SpeedSlider(engine, settings)
                         QuickButtons(engine)
                     }
@@ -120,7 +122,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     video(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-                    JoystickAndZoom(engine, joystickSize = min(240f, maxWidth.value * 0.62f).dp)
+                    JoystickAndZoom(engine, joystickSize = min(240f, boxW.value * 0.62f).dp)
                     SpeedSlider(engine, settings)
                     SectionTitle("Posições salvas")
                     PresetGrid(settings, engine, onEdit = { editPreset = it })

@@ -341,7 +341,7 @@ class Engine(private val context: Context) {
     }
 
     private fun refreshGamepad() {
-        val name = InputDevice.getDeviceIds()
+        val name = InputDevice.getDeviceIds().toList()
             .mapNotNull { InputDevice.getDevice(it) }
             .firstOrNull { isGamepad(it) }
             ?.name
