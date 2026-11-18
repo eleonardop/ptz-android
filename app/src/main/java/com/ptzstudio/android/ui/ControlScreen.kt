@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -296,7 +297,7 @@ private fun ArrowHold(icon: ImageVector, label: String, modifier: Modifier, size
             .wrapContentSize()
             .semantics { contentDescription = label }
             .pointerInput(Unit) {
-                androidx.compose.foundation.gestures.detectTapGestures(onPress = {
+                detectTapGestures(onPress = {
                     pressed = true
                     onDown()
                     try { tryAwaitRelease() } finally { pressed = false; onUp() }
