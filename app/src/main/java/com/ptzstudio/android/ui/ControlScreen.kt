@@ -122,11 +122,13 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                     }
                 }
             } else {
+                // O vídeo fica fixo no topo; só os controles rolam por baixo dele.
+                Column(Modifier.fillMaxSize()) {
+                    video(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp).fillMaxWidth().aspectRatio(16f / 9f))
                 Column(
-                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+                    Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    video(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
                     JoystickAndZoom(engine, joystickSize = min(300f, boxW.value - 24f - 78f - 12f).dp)
                     SpeedSlider(engine, settings)
                     ZoomSpeedSlider(engine, settings)
@@ -138,6 +140,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                         "Toque num preset para ir até ele. Toque e segure para salvar a posição atual ou mudar o nome.",
                         color = Palette.Muted, fontSize = 12.sp,
                     )
+                }
                 }
             }
         }
