@@ -1,6 +1,8 @@
 package com.ptzstudio.android.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -104,12 +106,47 @@ private class Labeler(val scope: DrawScope, val measurer: TextMeasurer, val s: F
     }
 }
 
+/** Área de toque de um botão no desenho (centro e raio em unidades do quadro 366 x 250). */
+private data class Hit(val button: PadButton, val cx: Float, val cy: Float, val r: Float)
+
+private val FrontHits = listOf(
+    Hit(PadButton.L3, 87f, 51f, 9f), Hit(PadButton.R3, 231f, 95f, 9f),
+    Hit(PadButton.HOME, 183f, 21f, 12f), Hit(PadButton.SCREENSHOT, 183f, 46f, 10f), Hit(PadButton.M, 183f, 123f, 11f),
+    Hit(PadButton.VIEW, 147.5f, 31f, 11f), Hit(PadButton.MENU, 219f, 31f, 11f),
+    Hit(PadButton.Y, 279f, 39.5f, 12f), Hit(PadButton.A, 279f, 80.5f, 12f), Hit(PadButton.X, 256f, 60f, 12f), Hit(PadButton.B, 302f, 60f, 12f),
+    Hit(PadButton.DPAD_UP, 136f, 86f, 12f), Hit(PadButton.DPAD_DOWN, 136f, 118f, 12f),
+    Hit(PadButton.DPAD_LEFT, 120f, 102f, 12f), Hit(PadButton.DPAD_RIGHT, 152f, 102f, 12f),
+    Hit(PadButton.LS, 87f, 51f, 27f), Hit(PadButton.RS, 231f, 95f, 27f),
+    Hit(PadButton.LB, 88f, 10f, 18f), Hit(PadButton.RB, 278f, 10f, 18f),
+)
+
+private val BackHits = listOf(
+    Hit(PadButton.RB, 102f, 13f, 18f), Hit(PadButton.LB, 264f, 13f, 18f),
+    Hit(PadButton.RT, 102f, 50f, 26f), Hit(PadButton.LT, 264f, 50f, 26f),
+    Hit(PadButton.R4, 140f, 114f, 30f), Hit(PadButton.L4, 226f, 114f, 30f),
+)
+
+/** Botão tocado no desenho: o primeiro da lista (os menores vêm antes) que contém o ponto, com folga. */
+private fun hitTest(hits: List<Hit>, x: Float, y: Float): PadButton? =
+    hits.firstOrNull { h -> (x - h.cx) * (x - h.cx) + (y - h.cy) * (y - h.cy) <= (h.r * 1.15f) * (h.r * 1.15f) }?.button
+
+private fun Modifier.tapToSelect(hits: List<Hit>, onTap: ((PadButton) -> Unit)?): Modifier =
+    if (onTap == null) this else this.pointerInput(onTap) {
+        detectTapGestures { p ->
+            val s = this.size.width / VB_W
+            hitTest(hits, p.x / s, p.y / s)?.let(onTap)
+        }
+    }
+
+/** Frente do controle. Com [onTap], tocar num botão do desenho o seleciona. */
 @Composable
-fun ControllerFront(highlight: Set<PadButton>, modifier: Modifier = Modifier) {
+fun ControllerFront(highlight: Set<PadButton>, modifier: Modifier = Modifier, onTap: ((PadButton) -> Unit)? = null) {
     val measurer = rememberTextMeasurer()
     val art = remember(highlight) { Art(highlight) }
     Canvas(
-        modifier.fillMaxWidth().aspectRatio(VB_W / VB_H).semantics { contentDescription = "Frente do controle" },
+        modifier.fillMaxWidth().aspectRatio(VB_W / VB_H)
+            .semantics { contentDescription = "Frente do controle: toque num botão para selecioná-lo" }
+            .tapToSelect(FrontHits, onTap),
     ) {
         val s = size.width / VB_W
         withTransform({ scale(s, s, pivot = Offset.Zero) }) { drawFront(art) }
@@ -122,12 +159,15 @@ fun ControllerFront(highlight: Set<PadButton>, modifier: Modifier = Modifier) {
     }
 }
 
+/** Costas do controle. Com [onTap], tocar num botão do desenho o seleciona. */
 @Composable
-fun ControllerBack(highlight: Set<PadButton>, modifier: Modifier = Modifier) {
+fun ControllerBack(highlight: Set<PadButton>, modifier: Modifier = Modifier, onTap: ((PadButton) -> Unit)? = null) {
     val measurer = rememberTextMeasurer()
     val art = remember(highlight) { Art(highlight) }
     Canvas(
-        modifier.fillMaxWidth().aspectRatio(VB_W / VB_H).semantics { contentDescription = "Costas do controle" },
+        modifier.fillMaxWidth().aspectRatio(VB_W / VB_H)
+            .semantics { contentDescription = "Costas do controle: toque num botão para selecioná-lo" }
+            .tapToSelect(BackHits, onTap),
     ) {
         val s = size.width / VB_W
         withTransform({ scale(s, s, pivot = Offset.Zero) }) { drawBack(art) }

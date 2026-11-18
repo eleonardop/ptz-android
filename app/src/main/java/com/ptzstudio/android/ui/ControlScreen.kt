@@ -97,30 +97,34 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
         return
     }
 
-    Column(Modifier.fillMaxSize().background(Palette.Ground)) {
-        TopBar(cam?.name ?: "PTZ Studio", link, gamepad, onCameras, onSettings)
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val boxW = maxWidth
-            val boxH = maxHeight
-            val landscape = boxW > boxH
-            val video: @Composable (Modifier) -> Unit = { m ->
-                VideoCard(engine, settings, m) { fullscreen = true }
-            }
-            if (landscape) {
-                // Tudo cabe na tela sem rolar: o joystick ocupa o espaço que sobra na coluna da direita.
-                val rightW = (boxW.value - 36f) / 2.15f
-                val stick = min(rightW - 2 * ZOOM_W - 20f, boxH.value - 24f - 46f - 16f - 16f - 8f).coerceIn(120f, 260f)
-                Row(
-                    Modifier.fillMaxSize().padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    BoxWithConstraints(Modifier.fillMaxSize().background(Palette.Ground)) {
+        val boxW = maxWidth
+        val boxH = maxHeight
+        val landscape = boxW > boxH
+        val video: @Composable (Modifier) -> Unit = { m ->
+            VideoCard(engine, settings, m) { fullscreen = true }
+        }
+        val topBar: @Composable () -> Unit = {
+            TopBar(cam?.name ?: "PTZ Studio", link, gamepad, onCameras, onSettings)
+        }
+        if (landscape) {
+            // Deitado: o vídeo sobe até o topo à esquerda, no formato 16:9; a barra fica só na coluna da direita.
+            val leftW = min(boxW.value * 0.55f, (boxH.value - 24f - 86f - 40f - 16f) * 16f / 9f).coerceAtLeast(220f)
+            val rightW = boxW.value - leftW - 36f
+            val stick = min(rightW - 2 * ZOOM_W - 20f, boxH.value - 52f - 24f - 46f - 16f - 16f).coerceIn(110f, 260f)
+            Row(Modifier.fillMaxSize()) {
+                Column(
+                    Modifier.width(leftW.dp).fillMaxHeight().padding(start = 12.dp, top = 12.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
                 ) {
-                    Column(Modifier.weight(1.15f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        video(Modifier.fillMaxWidth().weight(1f))
-                        PresetGrid(settings, engine, onEdit = { editPreset = it })
-                        QuickButtons(engine)
-                    }
+                    video(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+                    PresetGrid(settings, engine, onEdit = { editPreset = it })
+                    QuickButtons(engine)
+                }
+                Column(Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp)) {
+                    topBar()
                     Column(
-                        Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
                     ) {
                         JoystickAndZoom(engine, joystickSize = stick.dp)
@@ -128,24 +132,25 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                         ZoomInfo(engine, settings)
                     }
                 }
-            } else {
-                // O vídeo fica fixo no topo e os controles se ajustam ao espaço que sobra, sem precisar rolar.
-                Column(Modifier.fillMaxSize()) {
-                    video(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp).fillMaxWidth().aspectRatio(16f / 9f))
-                    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
-                        val availH = maxHeight.value
-                        // Altura fixa do resto: velocidades 46, zoom atual 16, presets 86, botões 40, espaços e margens.
-                        val stick = min(boxW.value - 24f - 2 * ZOOM_W - 20f, availH - 250f).coerceIn(140f, 320f)
-                        Column(
-                            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            JoystickAndZoom(engine, joystickSize = stick.dp)
-                            SpeedAndZoomSliders(engine, settings)
-                            ZoomInfo(engine, settings)
-                            PresetGrid(settings, engine, onEdit = { editPreset = it })
-                            QuickButtons(engine)
-                        }
+            }
+        } else {
+            // Em pé: o vídeo fica fixo no topo e os controles se ajustam ao espaço que sobra, sem precisar rolar.
+            Column(Modifier.fillMaxSize()) {
+                topBar()
+                video(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp).fillMaxWidth().aspectRatio(16f / 9f))
+                BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                    val availH = maxHeight.value
+                    // Altura fixa do resto: velocidades 46, zoom atual 16, presets 86, botões 40, espaços e margens.
+                    val stick = min(boxW.value - 24f - 2 * ZOOM_W - 20f, availH - 250f).coerceIn(140f, 320f)
+                    Column(
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        JoystickAndZoom(engine, joystickSize = stick.dp)
+                        SpeedAndZoomSliders(engine, settings)
+                        ZoomInfo(engine, settings)
+                        PresetGrid(settings, engine, onEdit = { editPreset = it })
+                        QuickButtons(engine)
                     }
                 }
             }
@@ -164,7 +169,7 @@ private fun TopBar(title: String, link: LinkState, gamepad: String?, onCameras: 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, color = Palette.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+        Text(title, color = Palette.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
         LinkChip(link)
         if (gamepad != null) {
             StatusChip("Controle", Palette.AccentBright, Palette.Chip, Palette.Soft)
@@ -220,7 +225,10 @@ private fun VideoCard(engine: Engine, settings: AppSettings, modifier: Modifier,
 
 private const val ZOOM_W = 56f
 
-/** Joystick no centro (fácil de usar com uma mão), com Zoom − à esquerda e Zoom + à direita. */
+/**
+ * Joystick no centro (fácil de usar com uma mão), com Zoom + em cima e Zoom − embaixo à direita.
+ * Um espaço do mesmo tamanho à esquerda mantém o joystick centralizado.
+ */
 @Composable
 private fun JoystickAndZoom(engine: Engine, joystickSize: Dp) {
     Row(
@@ -228,19 +236,23 @@ private fun JoystickAndZoom(engine: Engine, joystickSize: Dp) {
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ZoomHold("−", "Zoom −", -1, engine, joystickSize)
+        Spacer(Modifier.width(ZOOM_W.dp))
         VirtualJoystick(engine, joystickSize)
-        ZoomHold("+", "Zoom +", 1, engine, joystickSize)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val h = maxOf(joystickSize * 0.44f, 64.dp)
+            ZoomHold("+", "Zoom +", 1, engine, h)
+            ZoomHold("−", "Zoom −", -1, engine, h)
+        }
     }
 }
 
 @Composable
-private fun ZoomHold(symbol: String, label: String, dir: Int, engine: Engine, joystickSize: Dp) {
+private fun ZoomHold(symbol: String, label: String, dir: Int, engine: Engine, height: Dp) {
     HoldButton(
         label,
         { engine.setScreenZoom(dir) },
         { engine.setScreenZoom(0) },
-        Modifier.width(ZOOM_W.dp).height(maxOf(joystickSize * 0.62f, 88.dp)),
+        Modifier.width(ZOOM_W.dp).height(height),
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(symbol, color = Palette.Text, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)

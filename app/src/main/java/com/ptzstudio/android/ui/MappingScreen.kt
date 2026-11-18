@@ -69,6 +69,7 @@ fun MappingScreen(engine: Engine, onBack: () -> Unit) {
     }
 
     val highlight = if (active.isNotEmpty()) active + selected else setOf(selected)
+    val pick = remember { { b: PadButton -> selected = b } }
 
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
@@ -85,9 +86,10 @@ fun MappingScreen(engine: Engine, onBack: () -> Unit) {
             )
             Panel(Modifier.fillMaxWidth()) {
                 SectionTitle("Frente")
-                ControllerFront(highlight)
+                ControllerFront(highlight, onTap = pick)
                 SectionTitle("Costas")
-                ControllerBack(highlight)
+                ControllerBack(highlight, onTap = pick)
+                Text("Toque num botão do desenho para selecioná-lo.", color = Palette.Muted, fontSize = 12.sp)
             }
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Palette.AccentDim)
@@ -95,7 +97,7 @@ fun MappingScreen(engine: Engine, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text("Selecionado: ${selected.badge} · ${selected.label}", color = Palette.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                Text("Função: ${settings.mapping[selected]?.label ?: "—"}", color = Palette.AccentText, fontSize = 12.sp)
+                SelectedFunctionPicker(selected, settings.mapping[selected] ?: PadAction.NONE) { a -> engine.setMapping(selected, a) }
             }
             PadTile("Detectar botão no controle", Modifier.fillMaxWidth(), selected = true) { detecting = true }
             Text(
@@ -270,6 +272,31 @@ private fun DetectDialog(engine: Engine, onClose: () -> Unit, onDetected: (PadBu
                     r == null && seconds <= 0 -> TextButton(onClick = { result = null; round++ }) { Text("Tentar de novo") }
                     else -> {}
                 }
+            }
+        }
+    }
+}
+
+/** Função do botão selecionado, que pode ser trocada ali mesmo (sem rolar até a lista). */
+@Composable
+private fun SelectedFunctionPicker(button: PadButton, action: PadAction, onChange: (PadAction) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 40.dp).clip(RoundedCornerShape(8.dp)).background(Palette.Ground)
+                .border(1.dp, Palette.Accent, RoundedCornerShape(8.dp)).clickable { open = true }.padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Função: ", color = Palette.Muted, fontSize = 12.sp)
+            Text(action.label, color = Palette.AccentText, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1)
+            Text("Mudar ▾", color = Palette.Text, fontSize = 12.sp)
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            for (a in PadAction.optionsFor(button)) {
+                DropdownMenuItem(
+                    text = { Text(a.label, fontWeight = if (a == action) FontWeight.Bold else FontWeight.Normal) },
+                    onClick = { open = false; onChange(a) },
+                )
             }
         }
     }
