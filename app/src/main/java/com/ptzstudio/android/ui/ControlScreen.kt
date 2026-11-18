@@ -51,6 +51,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,45 +103,46 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                 VideoCard(engine, settings, m) { fullscreen = true }
             }
             if (landscape) {
+                // Tudo cabe na tela sem rolar: o joystick ocupa o espaço que sobra na coluna da direita.
+                val rightW = (boxW.value - 36f) / 2.15f
+                val stick = min(rightW - 90f, boxH.value - 24f - 96f - 8f).coerceIn(130f, 260f)
                 Row(
                     Modifier.fillMaxSize().padding(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Column(Modifier.weight(1.15f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.weight(1.15f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         video(Modifier.fillMaxWidth().weight(1f))
                         PresetRow(settings, engine, onEdit = { editPreset = it })
                         QuickButtons(engine)
                     }
                     Column(
                         Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
                     ) {
-                        JoystickAndZoom(engine, joystickSize = min(240f, boxH.value * 0.62f).dp)
-                        SpeedSlider(engine, settings)
-                        ZoomSpeedSlider(engine, settings)
+                        JoystickAndZoom(engine, joystickSize = stick.dp)
+                        SpeedAndZoomSliders(engine, settings)
                         ZoomInfo(engine, settings)
                     }
                 }
             } else {
-                // O vídeo fica fixo no topo; só os controles rolam por baixo dele.
+                // O vídeo fica fixo no topo e os controles se ajustam ao espaço que sobra, sem precisar rolar.
                 Column(Modifier.fillMaxSize()) {
                     video(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp).fillMaxWidth().aspectRatio(16f / 9f))
-                Column(
-                    Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    JoystickAndZoom(engine, joystickSize = min(300f, boxW.value - 24f - 78f - 12f).dp)
-                    SpeedSlider(engine, settings)
-                    ZoomSpeedSlider(engine, settings)
-                    ZoomInfo(engine, settings)
-                    SectionTitle("Posições salvas")
-                    PresetGrid(settings, engine, onEdit = { editPreset = it })
-                    QuickButtons(engine)
-                    Text(
-                        "Toque num preset para ir até ele. Toque e segure para salvar a posição atual ou mudar o nome.",
-                        color = Palette.Muted, fontSize = 12.sp,
-                    )
-                }
+                    BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
+                        val availH = maxHeight.value
+                        // Altura fixa do resto: velocidades 64, zoom atual 16, presets 86, botões 40, espaços e margens.
+                        val stick = min(boxW.value - 24f - 78f - 12f, availH - 270f).coerceIn(140f, 300f)
+                        Column(
+                            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            JoystickAndZoom(engine, joystickSize = stick.dp)
+                            SpeedAndZoomSliders(engine, settings)
+                            ZoomInfo(engine, settings)
+                            PresetGrid(settings, engine, onEdit = { editPreset = it })
+                            QuickButtons(engine)
+                        }
+                    }
                 }
             }
         }
@@ -361,16 +363,31 @@ private fun VirtualJoystick(engine: Engine, size: Dp) {
     }
 }
 
+/** Velocidade do Pan/Tilt e do zoom lado a lado (economiza espaço). */
 @Composable
-private fun SpeedSlider(engine: Engine, settings: AppSettings) {
+private fun SpeedAndZoomSliders(engine: Engine, settings: AppSettings) {
     val m = settings.motion
-    PercentRow("Velocidade", m.speedPercent) { engine.setMotion(m.copy(speedPercent = it)) }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        CompactSlider("Velocidade", m.speedPercent, Modifier.weight(1f)) { engine.setMotion(m.copy(speedPercent = it)) }
+        CompactSlider("Zoom", m.zoomSpeedPercent, Modifier.weight(1f)) { engine.setMotion(m.copy(zoomSpeedPercent = it)) }
+    }
 }
 
 @Composable
-private fun ZoomSpeedSlider(engine: Engine, settings: AppSettings) {
-    val m = settings.motion
-    PercentRow("Zoom", m.zoomSpeedPercent) { engine.setMotion(m.copy(zoomSpeedPercent = it)) }
+private fun CompactSlider(label: String, value: Int, modifier: Modifier, onChange: (Int) -> Unit) {
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().height(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Palette.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Text("$value%", color = Palette.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+        Slider(
+            value = value.toFloat(),
+            onValueChange = { onChange(it.toInt().coerceIn(1, 100)) },
+            valueRange = 1f..100f,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = SliderDefaults.colors(thumbColor = Palette.AccentBright, activeTrackColor = Palette.AccentBright),
+        )
+    }
 }
 
 /** Mostra o zoom atual e quanto o Pan/Tilt foi reduzido por causa dele. */
@@ -380,35 +397,20 @@ private fun ZoomInfo(engine: Engine, settings: AppSettings) {
     val m = settings.motion
     val z = zoom
     val text = when {
-        z == null -> "Zoom: a câmera não informou a posição (Pan/Tilt sem redução automática)"
+        z == null -> "Zoom: posição desconhecida (sem redução automática)"
         !m.zoomSlowdownEnabled -> "Zoom ${(z * 100).toInt()}%"
         else -> "Zoom ${(z * 100).toInt()}% · Pan/Tilt a ${(m.zoomSlowdownFactor(z) * 100).toInt()}% da velocidade"
     }
-    Text(text, color = if (z == null) Palette.Muted else Palette.Soft, fontSize = 12.sp)
-}
-
-@Composable
-private fun PercentRow(label: String, value: Int, onChange: (Int) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, color = Palette.Muted, fontSize = 13.sp, modifier = Modifier.width(82.dp))
-        Slider(
-            value = value.toFloat(),
-            onValueChange = { onChange(it.toInt().coerceIn(1, 100)) },
-            valueRange = 1f..100f,
-            modifier = Modifier.weight(1f).height(36.dp),
-            colors = SliderDefaults.colors(thumbColor = Palette.AccentBright, activeTrackColor = Palette.AccentBright),
-        )
-        Text("$value%", color = Palette.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(44.dp), textAlign = TextAlign.End)
-    }
+    Text(text, color = if (z == null) Palette.Muted else Palette.Soft, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.height(16.dp))
 }
 
 @Composable
 private fun QuickButtons(engine: Engine) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        PadTile("Autofoco", Modifier.weight(1f)) { engine.autofocus() }
-        PadTile("Brilho −", Modifier.weight(1f)) { engine.brightness(-1) }
-        PadTile("Brilho +", Modifier.weight(1f)) { engine.brightness(1) }
-        PadTile("Home", Modifier.weight(1f)) { engine.home() }
+        PadTile("Autofoco", Modifier.weight(1f), height = 40.dp) { engine.autofocus() }
+        PadTile("Brilho −", Modifier.weight(1f), height = 40.dp) { engine.brightness(-1) }
+        PadTile("Brilho +", Modifier.weight(1f), height = 40.dp) { engine.brightness(1) }
+        PadTile("Home", Modifier.weight(1f), height = 40.dp) { engine.home() }
     }
 }
 
@@ -419,7 +421,7 @@ private fun PresetRow(settings: AppSettings, engine: Engine, onEdit: (Int) -> Un
             PadTile(
                 settings.presetNames.getOrElse(n - 1) { "$n" },
                 Modifier.weight(1f),
-                height = 48.dp,
+                height = 40.dp,
                 onLongPress = { onEdit(n) },
             ) { engine.recallPreset(n) }
         }
@@ -436,6 +438,7 @@ private fun PresetGrid(settings: AppSettings, engine: Engine, onEdit: (Int) -> U
                     PadTile(
                         settings.presetNames.getOrElse(n - 1) { "$n" },
                         Modifier.weight(1f),
+                        height = 40.dp,
                         onLongPress = { onEdit(n) },
                     ) { engine.recallPreset(n) }
                 }
