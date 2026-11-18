@@ -49,7 +49,7 @@ Cada botão pode ser mudado em **Ajustes → Mapear botões do controle**. **Res
 
 ## Telas
 
-- **Controle**: vídeo ao vivo (RTSP), joystick da tela (arrastar = movimento gradual; setas separadas em volta = segurar para mover),
+- **Controle**: vídeo ao vivo (RTSP), joystick da tela como no Windows (arrastar o centro = movimento gradual; 8 botões de direção em volta, com diagonais = segurar para mover),
   zoom (segurar), velocidade do Pan/Tilt e do zoom de 1% a 100%, zoom atual, presets 1 a 8 (tocar = ir; tocar e segurar = gravar
   posição / mudar nome), Autofoco, Brilho, Home.
 - **Câmeras**: câmeras salvas com status (online/sem resposta), busca ONVIF na rede e cadastro pelo IP.

@@ -24,10 +24,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -50,7 +46,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -62,6 +57,15 @@ import androidx.compose.ui.unit.sp
 import com.ptzstudio.android.Engine
 import com.ptzstudio.android.LinkState
 import com.ptzstudio.android.core.AppSettings
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 import kotlin.math.hypot
 import kotlin.math.min
 
@@ -111,7 +115,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                         Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        JoystickAndZoom(engine, joystickSize = min(220f, boxH.value * 0.56f).dp)
+                        JoystickAndZoom(engine, joystickSize = min(240f, boxH.value * 0.62f).dp)
                         SpeedSlider(engine, settings)
                         ZoomSpeedSlider(engine, settings)
                         ZoomInfo(engine, settings)
@@ -123,7 +127,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     video(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-                    JoystickAndZoom(engine, joystickSize = min(260f, boxW.value * 0.66f).dp)
+                    JoystickAndZoom(engine, joystickSize = min(300f, boxW.value - 24f - 78f - 12f).dp)
                     SpeedSlider(engine, settings)
                     ZoomSpeedSlider(engine, settings)
                     ZoomInfo(engine, settings)
@@ -229,44 +233,41 @@ private fun JoystickAndZoom(engine: Engine, joystickSize: Dp) {
     }
 }
 
+/** Direções dos 8 botões em volta do joystick: ângulo (0 = direita, 90 = cima), pan, tilt. */
+private val Wedges = listOf(
+    Triple(90.0, 0, 1), Triple(45.0, 1, 1), Triple(0.0, 1, 0), Triple(315.0, 1, -1),
+    Triple(270.0, 0, -1), Triple(225.0, -1, -1), Triple(180.0, -1, 0), Triple(135.0, -1, 1),
+)
+
+private const val DRAG_R = 0.50f     // dentro deste raio o toque arrasta o joystick
+private const val WEDGE_IN = 0.56f   // anel dos 8 botões de direção
+private const val WEDGE_OUT = 0.97f
+private const val WEDGE_HALF = 19.5  // cada botão ocupa 39 dos 45 graus (folga entre eles)
+
 /**
- * Joystick da tela: arraste o círculo azul. A velocidade acompanha a distância do centro (movimento gradual).
- * As setas ficam FORA do círculo, com espaço entre elas: tocar numa seta nunca puxa o joystick,
- * e o joystick só responde a toques que começam dentro do círculo.
+ * Joystick da tela, como no PTZ Studio do Windows:
+ * - centro: arraste o círculo azul; a velocidade acompanha a distância do centro (movimento gradual);
+ * - anel de fora: 8 botões de direção (inclusive diagonais); segurar = mover, soltar = parar.
+ * O arraste só começa no centro, então tocar num botão de direção nunca puxa o joystick.
  */
 @Composable
 private fun VirtualJoystick(engine: Engine, size: Dp) {
-    val arrow = maxOf(size * 0.24f, 44.dp)
-    val gap = 6.dp
-    val stick = size - arrow * 2 - gap * 2
-    Box(Modifier.size(size)) {
-        JoystickCircle(engine, Modifier.align(Alignment.Center).size(stick))
-        ArrowHold(Icons.Default.KeyboardArrowUp, "Para cima", Modifier.align(Alignment.TopCenter).size(arrow),
-            { engine.setScreenPanTilt(0, 1) }, { engine.setScreenPanTilt(0, 0) })
-        ArrowHold(Icons.Default.KeyboardArrowDown, "Para baixo", Modifier.align(Alignment.BottomCenter).size(arrow),
-            { engine.setScreenPanTilt(0, -1) }, { engine.setScreenPanTilt(0, 0) })
-        ArrowHold(Icons.Default.KeyboardArrowLeft, "Para a esquerda", Modifier.align(Alignment.CenterStart).size(arrow),
-            { engine.setScreenPanTilt(-1, 0) }, { engine.setScreenPanTilt(0, 0) })
-        ArrowHold(Icons.Default.KeyboardArrowRight, "Para a direita", Modifier.align(Alignment.CenterEnd).size(arrow),
-            { engine.setScreenPanTilt(1, 0) }, { engine.setScreenPanTilt(0, 0) })
-    }
-}
-
-@Composable
-private fun JoystickCircle(engine: Engine, modifier: Modifier) {
     var knob by remember { mutableStateOf(Offset.Zero) }
+    var pressedWedge by remember { mutableStateOf(-1) }
     Canvas(
-        modifier
-            .semantics { contentDescription = "Joystick: arraste para mover a câmera" }
+        Modifier
+            .size(size)
+            .semantics { contentDescription = "Joystick: arraste o centro ou segure uma das 8 setas para mover a câmera" }
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     val center = Offset(this.size.width / 2f, this.size.height / 2f)
                     val outer = min(this.size.width, this.size.height) / 2f
-                    val dist = down.position - center
-                    // Toque fora do círculo (nos cantos): ignorado.
-                    if (hypot(dist.x, dist.y) <= outer) {
-                        val travel = outer * 0.75f
+                    val d0 = down.position - center
+                    val r0 = hypot(d0.x, d0.y)
+                    if (r0 <= outer * DRAG_R) {
+                        // Arraste proporcional
+                        val travel = outer * WEDGE_IN
                         fun update(p: Offset) {
                             var d = p - center
                             val len = hypot(d.x, d.y)
@@ -285,25 +286,75 @@ private fun JoystickCircle(engine: Engine, modifier: Modifier) {
                         }
                         knob = Offset.Zero
                         engine.setVirtualStick(0.0, 0.0)
+                    } else if (r0 >= outer * (WEDGE_IN - 0.04f) && r0 <= outer * 1.05f) {
+                        // Botão de direção (segurar)
+                        var ang = Math.toDegrees(atan2(-d0.y.toDouble(), d0.x.toDouble()))
+                        if (ang < 0) ang += 360.0
+                        val idx = ((ang / 45.0).roundToInt()) % 8
+                        var diff = kotlin.math.abs(ang - idx * 45.0)
+                        if (diff > 180) diff = 360 - diff
+                        if (diff <= WEDGE_HALF) {
+                            val w = Wedges.first { it.first == idx * 45.0 }
+                            pressedWedge = idx
+                            engine.setScreenPanTilt(w.second, w.third)
+                            down.consume()
+                            try {
+                                while (true) {
+                                    val ev = awaitPointerEvent()
+                                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!ch.pressed) break
+                                    ch.consume()
+                                }
+                            } finally {
+                                pressedWedge = -1
+                                engine.setScreenPanTilt(0, 0)
+                            }
+                        }
                     }
                 }
             },
     ) {
         val c = Offset(this.size.width / 2f, this.size.height / 2f)
         val outer = min(this.size.width, this.size.height) / 2f
-        drawCircle(Color(0xFF151A21), outer, c)
-        drawCircle(Palette.Border, outer, c, style = Stroke(1.dp.toPx()))
-        drawCircle(Palette.Line, outer * 0.75f, c, style = Stroke(1.dp.toPx()))
-        val knobR = outer * 0.36f
-        drawCircle(Palette.AccentDim, knobR + 4.dp.toPx(), c + knob)
-        drawCircle(Palette.Accent, knobR, c + knob)
-    }
-}
+        drawCircle(Color(0xFF0F1217), outer, c)
+        drawCircle(Color(0xFF3B4352), outer - 1.5.dp.toPx(), c, style = Stroke(1.5.dp.toPx()))
 
-@Composable
-private fun ArrowHold(icon: ImageVector, label: String, modifier: Modifier, onDown: () -> Unit, onUp: () -> Unit) {
-    HoldButton(label, onDown, onUp, modifier) {
-        Icon(icon, contentDescription = null, tint = Palette.Text, modifier = Modifier.size(28.dp))
+        val rIn = outer * WEDGE_IN
+        val rOut = outer * WEDGE_OUT
+        val rMid = (rIn + rOut) / 2f
+        for (w in Wedges) {
+            val a = w.first
+            val pressed = pressedWedge == ((a / 45.0).roundToInt() % 8)
+            val start = (-a - WEDGE_HALF).toFloat()
+            val sweep = (WEDGE_HALF * 2).toFloat()
+            val sector = Path().apply {
+                arcTo(Rect(c, rOut), start, sweep, true)
+                arcTo(Rect(c, rIn), start + sweep, -sweep, false)
+                close()
+            }
+            drawPath(sector, if (pressed) Palette.AccentDim else Color(0xFF252A35))
+            drawPath(sector, if (pressed) Palette.Accent else Color(0xFF3B4352), style = Stroke(1.dp.toPx()))
+            // Seta (chevron) apontando para fora
+            val rad = Math.toRadians(a)
+            val dir = Offset(cos(rad).toFloat(), -sin(rad).toFloat())
+            val perp = Offset(-dir.y, dir.x)
+            val k = outer * 0.07f
+            val tip = c + dir * (rMid + k * 0.6f)
+            val chevron = Path().apply {
+                val p1 = c + dir * (rMid - k * 0.6f) + perp * k
+                val p2 = c + dir * (rMid - k * 0.6f) - perp * k
+                moveTo(p1.x, p1.y); lineTo(tip.x, tip.y); lineTo(p2.x, p2.y)
+            }
+            drawPath(chevron, if (pressed) Palette.AccentText else Color(0xFF9AA4B5), style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        }
+
+        drawCircle(
+            Color(0xFF2A303B), outer * DRAG_R, c,
+            style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 4.dp.toPx()))),
+        )
+        val knobR = outer * 0.26f
+        drawCircle(Palette.AccentText, knobR + 2.dp.toPx(), c + knob)
+        drawCircle(Palette.Accent, knobR, c + knob)
     }
 }
 

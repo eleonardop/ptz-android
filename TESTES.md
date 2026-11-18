@@ -27,7 +27,7 @@ Estes itens só podem ser confirmados no celular, com a LJ510-30X-N e o GameSir:
 - [ ] Quais botões o Android recebe do GameSir: Home, Screenshot, M, L4 e R4 podem não chegar ao app (usar **Detectar botão**).
 - [ ] A LJ510-30X-N responde à consulta da posição do zoom (Ajustes mostra "Zoom agora: X%"). Se o zoom todo aproximado não mostrar 100%, usar **Calibrar**.
 - [ ] Com o zoom alto, o Pan/Tilt fica lento o suficiente (ajustar "Redução com o zoom no máximo").
-- [ ] Setas do joystick da tela não puxam o joystick.
+- [ ] Os 8 botões de direção do joystick da tela (inclusive diagonais) não puxam o joystick, e o arraste do centro é confortável.
 - [ ] Vídeo RTSP abre e não atrasa os comandos.
 - [ ] Busca ONVIF encontra a câmera (nem toda câmera responde).
 - [ ] Ao sair do app ou desligar o controle, a câmera para.
