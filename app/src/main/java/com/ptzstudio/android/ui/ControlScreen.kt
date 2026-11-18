@@ -105,7 +105,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
             if (landscape) {
                 // Tudo cabe na tela sem rolar: o joystick ocupa o espaço que sobra na coluna da direita.
                 val rightW = (boxW.value - 36f) / 2.15f
-                val stick = min(rightW - 90f, boxH.value - 24f - 96f - 8f).coerceIn(130f, 260f)
+                val stick = min(rightW - 90f, boxH.value - 24f - 120f).coerceIn(130f, 260f)
                 Row(
                     Modifier.fillMaxSize().padding(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -131,7 +131,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                     BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                         val availH = maxHeight.value
                         // Altura fixa do resto: velocidades 64, zoom atual 16, presets 86, botões 40, espaços e margens.
-                        val stick = min(boxW.value - 24f - 78f - 12f, availH - 270f).coerceIn(140f, 300f)
+                        val stick = min(boxW.value - 24f - 78f - 12f, availH - 310f).coerceIn(140f, 300f)
                         Column(
                             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -363,28 +363,35 @@ private fun VirtualJoystick(engine: Engine, size: Dp) {
     }
 }
 
-/** Velocidade do Pan/Tilt e do zoom lado a lado (economiza espaço). */
+/** Velocidade do Pan/Tilt e do zoom lado a lado, no valor real da câmera (ex.: 1 a 24 e 1 a 8). */
 @Composable
 private fun SpeedAndZoomSliders(engine: Engine, settings: AppSettings) {
     val m = settings.motion
+    val maxPan = engine.maxPanSpeed
+    val maxZoom = engine.maxZoomSpeed
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        CompactSlider("Velocidade", m.speedPercent, Modifier.weight(1f)) { engine.setMotion(m.copy(speedPercent = it)) }
-        CompactSlider("Zoom", m.zoomSpeedPercent, Modifier.weight(1f)) { engine.setMotion(m.copy(zoomSpeedPercent = it)) }
+        LevelSlider("Velocidade", m.speedLevel(maxPan), maxPan, Modifier.weight(1f)) {
+            engine.setMotion(m.withSpeedLevel(it, maxPan))
+        }
+        LevelSlider("Zoom", m.zoomLevelSetting(maxZoom), maxZoom, Modifier.weight(1f)) {
+            engine.setMotion(m.withZoomLevelSetting(it, maxZoom))
+        }
     }
 }
 
 @Composable
-private fun CompactSlider(label: String, value: Int, modifier: Modifier, onChange: (Int) -> Unit) {
+fun LevelSlider(label: String, value: Int, max: Int, modifier: Modifier, onChange: (Int) -> Unit) {
     Column(modifier) {
-        Row(Modifier.fillMaxWidth().height(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(label, color = Palette.Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-            Text("$value%", color = Palette.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Palette.Muted, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f))
+            Text("$value de $max", color = Palette.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
         Slider(
             value = value.toFloat(),
-            onValueChange = { onChange(it.toInt().coerceIn(1, 100)) },
-            valueRange = 1f..100f,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            onValueChange = { onChange(it.roundToInt().coerceIn(1, max)) },
+            valueRange = 1f..max.toFloat(),
+            steps = (max - 2).coerceAtLeast(0),
+            modifier = Modifier.fillMaxWidth(),
             colors = SliderDefaults.colors(thumbColor = Palette.AccentBright, activeTrackColor = Palette.AccentBright),
         )
     }
@@ -401,7 +408,7 @@ private fun ZoomInfo(engine: Engine, settings: AppSettings) {
         !m.zoomSlowdownEnabled -> "Zoom ${(z * 100).toInt()}%"
         else -> "Zoom ${(z * 100).toInt()}% · Pan/Tilt a ${(m.zoomSlowdownFactor(z) * 100).toInt()}% da velocidade"
     }
-    Text(text, color = if (z == null) Palette.Muted else Palette.Soft, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.height(16.dp))
+    Text(text, color = if (z == null) Palette.Muted else Palette.Soft, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable

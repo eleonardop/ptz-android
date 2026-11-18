@@ -310,6 +310,12 @@ class Engine(private val context: Context) {
 
     private val address: Int get() = _settings.value.selectedCamera?.viscaAddress ?: 1
 
+    /** Maior velocidade de Pan/Tilt da câmera em uso (VISCA: 24). */
+    val maxPanSpeed: Int get() = (_settings.value.selectedCamera?.limits ?: com.ptzstudio.android.core.CameraLimits()).maxPan
+
+    /** Maior velocidade de zoom da câmera em uso (VISCA: 8). */
+    val maxZoomSpeed: Int get() = (_settings.value.selectedCamera?.limits ?: com.ptzstudio.android.core.CameraLimits()).maxZoom
+
     fun setVirtualStick(x: Double, y: Double) = controller.setVirtualStick(x, y)
     fun setScreenPanTilt(pan: Int, tilt: Int) = controller.setScreenPanTilt(pan, tilt)
     fun setScreenZoom(dir: Int) = controller.setScreenZoom(dir)
@@ -344,10 +350,13 @@ class Engine(private val context: Context) {
 
     fun stopCamera() = controller.stopNow(SystemClock.elapsedRealtime())
 
+    /** Sobe ou desce a velocidade do Pan/Tilt um passo (no valor real da câmera). */
     fun changeSpeed(delta: Int) {
         val m = _settings.value.motion
-        setMotion(m.copy(speedPercent = (m.speedPercent + delta).coerceIn(1, 100)))
-        say("Velocidade ${_settings.value.motion.speedPercent}%")
+        val max = maxPanSpeed
+        val level = (m.speedLevel(max) + delta).coerceIn(1, max)
+        setMotion(m.withSpeedLevel(level, max))
+        say("Velocidade $level de $max")
     }
 
     private fun presetName(n: Int) = _settings.value.presetNames.getOrNull(n - 1) ?: "Preset $n"
@@ -361,8 +370,8 @@ class Engine(private val context: Context) {
         when {
             p != null -> recallPreset(p)
             a == PadAction.AUTOFOCUS -> autofocus()
-            a == PadAction.SPEED_UP -> changeSpeed(+10)
-            a == PadAction.SPEED_DOWN -> changeSpeed(-10)
+            a == PadAction.SPEED_UP -> changeSpeed(+1)
+            a == PadAction.SPEED_DOWN -> changeSpeed(-1)
             a == PadAction.BRIGHT_UP -> brightness(+1)
             a == PadAction.BRIGHT_DOWN -> brightness(-1)
             a == PadAction.HOME -> home()

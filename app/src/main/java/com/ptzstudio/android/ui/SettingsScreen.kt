@@ -64,13 +64,17 @@ fun SettingsScreen(engine: Engine, onBack: () -> Unit, onMapping: () -> Unit) {
 
             SectionTitle("Movimento")
             Panel(Modifier.fillMaxWidth()) {
-                PercentSlider("Velocidade", m.speedPercent, 1..100) { set(m.copy(speedPercent = it)) }
+                LevelSlider("Velocidade do Pan/Tilt", m.speedLevel(engine.maxPanSpeed), engine.maxPanSpeed, Modifier.fillMaxWidth()) {
+                    set(m.withSpeedLevel(it, engine.maxPanSpeed))
+                }
                 PercentSlider("Aceleração gradual", m.rampPercent, 0..100) { set(m.copy(rampPercent = it)) }
                 Hint("0% = começa na velocidade final. 100% = leva cerca de 2 segundos para chegar à velocidade final.")
                 PercentSlider("Zona morta", m.deadzonePercent, 0..30) { set(m.copy(deadzonePercent = it)) }
                 Hint("Folga do centro do analógico que é ignorada (evita a câmera andar sozinha).")
                 PercentSlider("Movimento fino", m.finePercent, 5..100) { set(m.copy(finePercent = it)) }
-                PercentSlider("Velocidade do zoom", m.zoomSpeedPercent, 1..100) { set(m.copy(zoomSpeedPercent = it)) }
+                LevelSlider("Velocidade do zoom", m.zoomLevelSetting(engine.maxZoomSpeed), engine.maxZoomSpeed, Modifier.fillMaxWidth()) {
+                    set(m.withZoomLevelSetting(it, engine.maxZoomSpeed))
+                }
                 Hint("Vale para os gatilhos e para os botões de zoom. Também dá para mudar na tela principal.")
                 PercentSlider("Trava de diagonal", m.diagonalLockDeg, 0..44, unit = "°") { set(m.copy(diagonalLockDeg = it)) }
                 Hint("Se o analógico está quase na horizontal ou na vertical, o outro eixo é ignorado (sem diagonais sem querer).")

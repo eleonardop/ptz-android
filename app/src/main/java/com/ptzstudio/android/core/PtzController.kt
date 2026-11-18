@@ -41,6 +41,19 @@ data class MotionConfig(
     /** Trava de diagonal: abaixo deste ângulo o eixo secundário é ignorado (0 = desligada). */
     val diagonalLockDeg: Int = 18,
 ) {
+    companion object {
+        /** Valor real (1..max) para a porcentagem guardada, sem perder o valor na ida e volta. */
+        fun levelToPercent(level: Int, max: Int): Int {
+            val m = max.coerceAtLeast(1)
+            return (level.coerceIn(1, m) * 100.0 / m).roundToInt().coerceIn(1, 100)
+        }
+
+        fun percentToLevel(percent: Int, max: Int): Int {
+            val m = max.coerceAtLeast(1)
+            return (percent.coerceIn(1, 100) * m / 100.0).roundToInt().coerceIn(1, m)
+        }
+    }
+
     fun sanitized(): MotionConfig = copy(
         speedPercent = speedPercent.coerceIn(1, 100),
         rampPercent = rampPercent.coerceIn(0, 100),
@@ -62,6 +75,14 @@ data class MotionConfig(
         val r = zoomSlowdownPercent.coerceIn(0, 95) / 100.0
         return 1.0 - r * Math.pow(z, 1.5)
     }
+
+    /** Velocidade de Pan/Tilt no valor real da câmera (1 até [maxPan]). */
+    fun speedLevel(maxPan: Int): Int = percentToLevel(speedPercent, maxPan)
+    fun withSpeedLevel(level: Int, maxPan: Int): MotionConfig = copy(speedPercent = levelToPercent(level, maxPan))
+
+    /** Velocidade do zoom no valor real da câmera (1 até [maxZoom]). */
+    fun zoomLevelSetting(maxZoom: Int): Int = percentToLevel(zoomSpeedPercent, maxZoom)
+    fun withZoomLevelSetting(level: Int, maxZoom: Int): MotionConfig = copy(zoomSpeedPercent = levelToPercent(level, maxZoom))
 
     /** Segundos para ir do repouso à velocidade máxima. */
     val rampSeconds: Double get() = rampPercent.coerceIn(0, 100) / 100.0 * 2.0

@@ -73,4 +73,17 @@ class MotionTest {
         val s = AxisSettings(minSpeed = 1, maxSpeed = 20, accelPerSecond = 0.0)
         assertEquals(15.0, AxisChannel().step(15.0, 0.02, s), 1e-9)
     }
+
+    @Test
+    fun valoresReais_idaEVoltaSemPerda() {
+        for (max in listOf(24, 20, 8)) {
+            for (level in 1..max) {
+                val p = MotionConfig.levelToPercent(level, max)
+                assertEquals("max=$max nível=$level", level, MotionConfig.percentToLevel(p, max))
+            }
+        }
+        val m = MotionConfig().withSpeedLevel(12, 24).withZoomLevelSetting(3, 8)
+        assertEquals(12, m.speedLevel(24))
+        assertEquals(3, m.zoomLevelSetting(8))
+    }
 }

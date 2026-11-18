@@ -275,4 +275,14 @@ class ControllerTest {
         repeat(5) { t += 20; ctl.tick(0.02, t) }
         assertEquals(5, s.last { it.isPanTilt() }.panSpeed())
     }
+
+    @Test
+    fun valorRealNaBarra_eOQueVaiParaACamera() {
+        c.config = MotionConfig(rampPercent = 0).withSpeedLevel(13, 24).withZoomLevelSetting(3, 8)
+        c.setPhysicalStick(1.0, 0.0)
+        c.setAnalogZoom(1.0)
+        tick(5)
+        assertEquals(13, lastPanTilt().panSpeed())
+        assertEquals(3, sent.last { it.isZoom() }.zoomSpeed())
+    }
 }
