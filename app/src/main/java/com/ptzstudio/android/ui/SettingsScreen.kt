@@ -42,6 +42,26 @@ fun SettingsScreen(engine: Engine, onBack: () -> Unit, onMapping: () -> Unit) {
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            SectionTitle("Vídeo ao vivo")
+            Panel(Modifier.fillMaxWidth()) {
+                SwitchRow("Mostrar o vídeo da câmera na tela de controle", settings.videoEnabled) { engine.setVideoEnabled(it) }
+                Hint("O endereço RTSP fica no cadastro de cada câmera (Câmeras › Editar).")
+            }
+
+            SectionTitle("Controle físico")
+            Panel(Modifier.fillMaxWidth()) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatusChip(
+                        gamepad ?: "Nenhum controle conectado",
+                        if (gamepad != null) Palette.Green else Palette.Muted,
+                        Palette.Chip,
+                        if (gamepad != null) Palette.Text else Palette.Muted,
+                    )
+                }
+                Hint("Conecte o GameSir pelo Bluetooth do celular (modo Android/Xbox) ou por cabo USB-C.")
+                PadTile("Mapear botões do controle", Modifier.fillMaxWidth(), onClick = onMapping)
+            }
+
             SectionTitle("Movimento")
             Panel(Modifier.fillMaxWidth()) {
                 PercentSlider("Velocidade", m.speedPercent, 1..100) { set(m.copy(speedPercent = it)) }
@@ -77,26 +97,6 @@ fun SettingsScreen(engine: Engine, onBack: () -> Unit, onMapping: () -> Unit) {
                     engine.calibrateZoomMax()
                 }
                 Hint("Use se o zoom nunca chega a 100%: aproxime o zoom até o fim e toque no botão acima.")
-            }
-
-            SectionTitle("Vídeo ao vivo")
-            Panel(Modifier.fillMaxWidth()) {
-                SwitchRow("Mostrar o vídeo da câmera na tela de controle", settings.videoEnabled) { engine.setVideoEnabled(it) }
-                Hint("O endereço RTSP fica no cadastro de cada câmera (Câmeras › Editar).")
-            }
-
-            SectionTitle("Controle físico")
-            Panel(Modifier.fillMaxWidth()) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatusChip(
-                        gamepad ?: "Nenhum controle conectado",
-                        if (gamepad != null) Palette.Green else Palette.Muted,
-                        Palette.Chip,
-                        if (gamepad != null) Palette.Text else Palette.Muted,
-                    )
-                }
-                Hint("Conecte o GameSir pelo Bluetooth do celular (modo Android/Xbox) ou por cabo USB-C.")
-                PadTile("Mapear botões do controle", Modifier.fillMaxWidth(), onClick = onMapping)
             }
 
             Text(
