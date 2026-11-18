@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -111,7 +112,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
             // Deitado: o vídeo sobe até o topo à esquerda, no formato 16:9; a barra fica só na coluna da direita.
             val leftW = min(boxW.value * 0.55f, (boxH.value - 24f - 86f - 40f - 16f) * 16f / 9f).coerceAtLeast(220f)
             val rightW = boxW.value - leftW - 36f
-            val stick = min(rightW - 2 * ZOOM_W - 20f, boxH.value - 52f - 24f - 46f - 16f - 16f).coerceIn(110f, 260f)
+            val stick = min(rightW - 2 * ZOOM_W - 20f, boxH.value - 52f - 32f - 46f - 22f - 16f).coerceIn(110f, 260f)
             Row(Modifier.fillMaxSize()) {
                 Column(
                     Modifier.width(leftW.dp).fillMaxHeight().padding(start = 12.dp, top = 12.dp, bottom = 12.dp),
@@ -124,7 +125,7 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                 Column(Modifier.weight(1f).fillMaxHeight().padding(start = 12.dp)) {
                     topBar()
                     Column(
-                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 12.dp),
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 20.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
                     ) {
                         JoystickAndZoom(engine, joystickSize = stick.dp)
@@ -169,24 +170,29 @@ private fun TopBar(title: String, link: LinkState, gamepad: String?, onCameras: 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(title, color = Palette.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        LinkChip(link)
-        if (gamepad != null) {
-            StatusChip("Controle", Palette.AccentBright, Palette.Chip, Palette.Soft)
+        // O título fica sempre inteiro (até um limite); quem encolhe são os avisos ao lado.
+        Text(
+            title, color = Palette.Text, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp),
+        )
+        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            LinkChip(link, Modifier.weight(1f, fill = false))
+            if (gamepad != null) {
+                StatusChip("Controle", Palette.AccentBright, Palette.Chip, Palette.Soft, Modifier.weight(1f, fill = false))
+            }
         }
-        Spacer(Modifier.weight(1f))
         IconButton(onClick = onCameras) { Icon(Icons.Default.List, contentDescription = "Câmeras", tint = Palette.Text) }
         IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Ajustes", tint = Palette.Text) }
     }
 }
 
 @Composable
-fun LinkChip(link: LinkState) {
+fun LinkChip(link: LinkState, modifier: Modifier = Modifier) {
     when (link) {
-        LinkState.ONLINE -> StatusChip(link.label, Palette.Green, Palette.GreenDim, Palette.GreenText)
-        LinkState.CONNECTING -> StatusChip(link.label, Palette.Amber, Palette.AmberDim, Palette.Amber)
-        LinkState.NO_REPLY -> StatusChip(link.label, Palette.Red, Palette.RedDim, Palette.RedText)
-        LinkState.NO_CAMERA -> StatusChip(link.label, Palette.Muted, Palette.Chip, Palette.Muted)
+        LinkState.ONLINE -> StatusChip(link.label, Palette.Green, Palette.GreenDim, Palette.GreenText, modifier)
+        LinkState.CONNECTING -> StatusChip(link.label, Palette.Amber, Palette.AmberDim, Palette.Amber, modifier)
+        LinkState.NO_REPLY -> StatusChip(link.label, Palette.Red, Palette.RedDim, Palette.RedText, modifier)
+        LinkState.NO_CAMERA -> StatusChip(link.label, Palette.Muted, Palette.Chip, Palette.Muted, modifier)
     }
 }
 

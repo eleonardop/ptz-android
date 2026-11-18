@@ -4,38 +4,33 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Câmera PTZ profissional vista de frente: base, garfo (braços laterais) e cabeça com lente grande.
-         Reduzida para caber na área visível do ícone redondo. -->
-    <group android:scaleX="0.75" android:scaleY="0.75" android:pivotX="54" android:pivotY="57">
-
-    <!-- Base -->
-    <path android:fillColor="#C9CED6" android:pathData="M31,75 h46 a5,5 0 0 1 5,5 v3 a3,3 0 0 1 -3,3 h-50 a3,3 0 0 1 -3,-3 v-3 a5,5 0 0 1 5,-5 z" />
-    <path android:fillColor="#9AA4B2" android:pathData="M28,82 h52 v1 a3,3 0 0 1 -3,3 h-46 a3,3 0 0 1 -3,-3 z" />
-    <!-- LED de status na base -->
-    <path android:fillColor="#22C55E" android:pathData="M70,79.5 m-1.4,0 a1.4,1.4 0 1 1 2.8,0 a1.4,1.4 0 1 1 -2.8,0" />
-
-    <!-- Pescoço giratório (pan) -->
-    <path android:fillColor="#7C8593" android:pathData="M47,70 h14 v5 h-14 z" />
-
-    <!-- Garfo (tilt): dois braços e a ponte de baixo -->
-    <path android:fillColor="#E6EAF0" android:pathData="M27,40 a4,4 0 0 1 4,-4 h3 a3,3 0 0 1 3,3 v25 h34 v-25 a3,3 0 0 1 3,-3 h3 a4,4 0 0 1 4,4 v28 a4,4 0 0 1 -4,4 h-46 a4,4 0 0 1 -4,-4 z" />
-    <path android:fillColor="#B8BFCA" android:pathData="M29,66 h50 v2 a4,4 0 0 1 -4,4 h-42 a4,4 0 0 1 -4,-4 z" />
-    <!-- Eixos do tilt -->
-    <path android:fillColor="#7C8593" android:pathData="M32,48 m-2.2,0 a2.2,2.2 0 1 1 4.4,0 a2.2,2.2 0 1 1 -4.4,0" />
-    <path android:fillColor="#7C8593" android:pathData="M76,48 m-2.2,0 a2.2,2.2 0 1 1 4.4,0 a2.2,2.2 0 1 1 -4.4,0" />
-
-    <!-- Cabeça da câmera -->
-    <path android:fillColor="#F4F6F8" android:pathData="M45,30 h18 a9,9 0 0 1 9,9 v19 a5,5 0 0 1 -5,5 h-26 a5,5 0 0 1 -5,-5 v-19 a9,9 0 0 1 9,-9 z" />
-    <path android:fillColor="#D5DAE1" android:pathData="M36,55 h36 v3 a5,5 0 0 1 -5,5 h-26 a5,5 0 0 1 -5,-5 z" />
-
-    <!-- Lente: anel, vidro azul e reflexo -->
-    <path android:fillColor="#1A1F27" android:pathData="M54,46 m-12,0 a12,12 0 1 1 24,0 a12,12 0 1 1 -24,0" />
-    <path android:fillColor="#3A4250" android:pathData="M54,46 m-9.5,0 a9.5,9.5 0 1 1 19,0 a9.5,9.5 0 1 1 -19,0" />
-    <path android:fillColor="#2563EB" android:pathData="M54,46 m-7,0 a7,7 0 1 1 14,0 a7,7 0 1 1 -14,0" />
-    <path android:fillColor="#0E1116" android:pathData="M54,46 m-3.6,0 a3.6,3.6 0 1 1 7.2,0 a3.6,3.6 0 1 1 -7.2,0" />
-    <path android:fillColor="#93C5FD" android:pathData="M50.5,42.5 m-1.6,0 a1.6,1.6 0 1 1 3.2,0 a1.6,1.6 0 1 1 -3.2,0" />
-
-    <!-- Luz de "no ar" (tally) -->
-    <path android:fillColor="#EF4444" android:pathData="M66,35.5 m-1.5,0 a1.5,1.5 0 1 1 3,0 a1.5,1.5 0 1 1 -3,0" />
+    <!-- Câmera PTZ profissional em 3/4: base em perspectiva, prato giratório, torre escura,
+         braço claro do tilt e cabeça com lente grande. Reduzida para caber no ícone redondo. -->
+    <group android:scaleX="0.74" android:scaleY="0.74" android:pivotX="56" android:pivotY="53"
+        android:translateX="-2" android:translateY="1">
+        <path android:fillColor="#000000" android:fillAlpha="0.25" android:pathData="M22 86 C22 82 90 82 90 86 C90 90 22 90 22 86 Z" />
+        <path android:fillColor="#E6EAF0" android:pathData="M22 70 L35 63 L90 63 L77 70 Z" />
+        <path android:fillColor="#C9CED6" android:pathData="M22 70 H77 V82 Q77 85 74 85 H25 Q22 85 22 82 Z" />
+        <path android:fillColor="#8C95A3" android:pathData="M77 70 L90 63 V75 Q90 77 88 78 L77 85 Z" />
+        <path android:fillColor="#AEB5C0" android:pathData="M26 78 H48 V80 H26 Z" />
+        <path android:fillColor="#2563EB" android:pathData="M58 76 H70 V79 H58 Z" />
+        <path android:fillColor="#B08D57" android:pathData="M86 70 L89 68.5 V71.5 L86 73 Z" />
+        <path android:fillColor="#2B2E33" android:strokeColor="#5A6270" android:strokeWidth="0.8" android:pathData="M30 66 C30 60 82 60 82 66 C82 71 30 71 30 66 Z" />
+        <path android:fillColor="#2B2E33" android:strokeColor="#5A6270" android:strokeWidth="0.8" android:pathData="M34 66 V42 Q34 36 40 36 H66 Q72 36 72 42 V66 Z" />
+        <path android:fillColor="#0E1116" android:pathData="M39 63 V50 Q39 47 42 47 H60 Q63 47 63 50 V63 Z" />
+        <path android:fillColor="#3A4250" android:pathData="M39 63 H63 V61 H39 Z" />
+        <path android:fillColor="#D5DAE1" android:pathData="M62 67 V36 Q62 26 71 26 Q80 26 80 36 V64 Q80 67 77 67 Z" />
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.7" android:pathData="M65 62 V37 Q65 31 70 29 Q67 32 67 37 V62 Z" />
+        <path android:fillColor="#9AA4B2" android:fillAlpha="0.8" android:pathData="M76 66 V37 Q76 31 72 29 Q78 30 78 37 V64 Q78 66 76 66 Z" />
+        <path android:fillColor="#2B2E33" android:strokeColor="#5A6270" android:strokeWidth="0.8" android:pathData="M30 34 Q30 20 44 20 H58 Q66 20 66 28 V44 H30 Z" />
+        <path android:fillColor="#E6EAF0" android:pathData="M42 34 m-16 0 a16 16 0 1 1 32 0 a16 16 0 1 1 -32 0" />
+        <path android:fillColor="#9AA4B2" android:pathData="M42 34 m-13 0 a13 13 0 1 1 26 0 a13 13 0 1 1 -26 0" />
+        <path android:fillColor="#3A4250" android:pathData="M42 34 m-11 0 a11 11 0 1 1 22 0 a11 11 0 1 1 -22 0" />
+        <path android:fillColor="#0E1116" android:pathData="M42 34 m-9 0 a9 9 0 1 1 18 0 a9 9 0 1 1 -18 0" />
+        <path android:fillColor="#2563EB" android:pathData="M42 34 m-6 0 a6 6 0 1 1 12 0 a6 6 0 1 1 -12 0" />
+        <path android:fillColor="#0E1116" android:pathData="M42 34 m-3 0 a3 3 0 1 1 6 0 a3 3 0 1 1 -6 0" />
+        <path android:fillColor="#93C5FD" android:pathData="M38.5 30.5 m-1.8 0 a1.8 1.8 0 1 1 3.6 0 a1.8 1.8 0 1 1 -3.6 0" />
+        <path android:fillColor="#FFFFFF" android:fillAlpha="0.8" android:pathData="M28 30 Q30 22 37 19.5 Q32 23 30 30 Z" />
+        <path android:fillColor="#EF4444" android:pathData="M61 25 m-1.8 0 a1.8 1.8 0 1 1 3.6 0 a1.8 1.8 0 1 1 -3.6 0" />
     </group>
 </vector>

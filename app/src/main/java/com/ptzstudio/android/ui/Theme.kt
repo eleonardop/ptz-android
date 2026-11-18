@@ -114,9 +114,9 @@ fun Panel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> 
 }
 
 @Composable
-fun StatusChip(text: String, dot: Color, background: Color, textColor: Color) {
+fun StatusChip(text: String, dot: Color, background: Color, textColor: Color, modifier: Modifier = Modifier) {
     Row(
-        Modifier
+        modifier
             .clip(RoundedCornerShape(50))
             .background(background)
             .padding(horizontal = 10.dp, vertical = 4.dp),
@@ -124,7 +124,7 @@ fun StatusChip(text: String, dot: Color, background: Color, textColor: Color) {
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
         Spacer(Modifier.width(6.dp))
-        Text(text, color = textColor, fontSize = 12.sp, maxLines = 1)
+        Text(text, color = textColor, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }
 

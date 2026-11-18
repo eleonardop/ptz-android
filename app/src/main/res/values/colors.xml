@@ -3,4 +3,5 @@
     <color name="ground">#0E1116</color>
     <color name="bar">#12161C</color>
     <color name="accent">#2563EB</color>
+    <color name="icon_bg">#1B2A44</color>
 </resources>
