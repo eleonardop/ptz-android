@@ -84,6 +84,9 @@ object ViscaCommands {
 
     fun home(address: Int): ByteArray = bytes(header(address).toInt(), 0x01, 0x06, 0x04, 0xFF)
 
+    /** Consulta da posição do zoom. Resposta: y0 50 0p 0q 0r 0s FF. */
+    fun zoomPositionInquiry(address: Int): ByteArray = bytes(header(address).toInt(), 0x09, 0x04, 0x47, 0xFF)
+
     /** Consulta de versão: usada só para saber se a câmera responde. */
     fun versionInquiry(address: Int): ByteArray = bytes(header(address).toInt(), 0x09, 0x00, 0x02, 0xFF)
 
@@ -130,4 +133,25 @@ object ViscaFraming {
     /** Comando (0x01 no 2º byte) ou consulta (0x09). */
     fun typeFor(payload: ByteArray): Int =
         if (payload.size > 1 && payload[1].toInt() == 0x09) TYPE_INQUIRY else TYPE_COMMAND
+}
+
+/** Leitura das respostas da câmera. */
+object ViscaReplies {
+    /** Tira o cabeçalho de 8 bytes do VISCA over IP, se houver. */
+    fun payload(data: ByteArray): ByteArray =
+        if (data.size > 8 && (data[0].toInt() and 0xFF) == 0x01 && (data[1].toInt() and 0xFF) == 0x11) data.copyOfRange(8, data.size) else data
+
+    /** Posição do zoom numa resposta "y0 50 0p 0q 0r 0s FF" (0 = afastado). Nulo se não for essa resposta. */
+    fun zoomPosition(data: ByteArray): Int? {
+        val p = payload(data)
+        if (p.size != 7) return null
+        if ((p[0].toInt() and 0xF0) != 0x90 || p[1].toInt() != 0x50 || (p[6].toInt() and 0xFF) != 0xFF) return null
+        var v = 0
+        for (i in 2..5) {
+            val n = p[i].toInt() and 0xFF
+            if (n > 0x0F) return null
+            v = (v shl 4) or n
+        }
+        return v
+    }
 }

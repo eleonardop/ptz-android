@@ -2,6 +2,7 @@ package com.ptzstudio.android.core
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ViscaTest {
@@ -73,5 +74,26 @@ class ViscaTest {
         assertEquals(ViscaFraming.TYPE_INQUIRY, ViscaFraming.typeFor(ViscaCommands.versionInquiry(1)))
         assertEquals(ViscaFraming.TYPE_COMMAND, ViscaFraming.typeFor(payload))
         assertArrayEquals(byteArrayOf(0x02, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0x01), ViscaFraming.resetSequence())
+    }
+
+    @Test
+    fun posicaoDoZoom_consultaEResposta() {
+        assertEquals("81 09 04 47 FF", hex(ViscaCommands.zoomPositionInquiry(1)))
+        val reply = byteArrayOf(0x90.toByte(), 0x50, 0x01, 0x02, 0x03, 0x04, 0xFF.toByte())
+        assertEquals(0x1234, ViscaReplies.zoomPosition(reply))
+        val overIp = byteArrayOf(0x01, 0x11, 0x00, 0x07, 0, 0, 0, 5) + reply
+        assertEquals(0x1234, ViscaReplies.zoomPosition(overIp))
+        assertEquals(null, ViscaReplies.zoomPosition(byteArrayOf(0x90.toByte(), 0x41, 0xFF.toByte())))
+        assertEquals(null, ViscaReplies.zoomPosition(byteArrayOf(0x90.toByte(), 0x50, 0x10, 0x02, 0x03, 0x04, 0xFF.toByte())))
+    }
+
+    @Test
+    fun fatorDeReducao() {
+        val m = MotionConfig(zoomSlowdownEnabled = true, zoomSlowdownPercent = 80)
+        assertEquals(1.0, m.zoomSlowdownFactor(0.0), 1e-9)
+        assertEquals(0.2, m.zoomSlowdownFactor(1.0), 1e-9)
+        assertEquals(1.0, m.zoomSlowdownFactor(null), 1e-9)
+        assertEquals(1.0, m.copy(zoomSlowdownEnabled = false).zoomSlowdownFactor(1.0), 1e-9)
+        assertTrue(m.zoomSlowdownFactor(0.3) > m.zoomSlowdownFactor(0.7))
     }
 }

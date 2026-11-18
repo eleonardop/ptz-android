@@ -140,6 +140,7 @@ class ControllerTest {
 
     @Test
     fun gatilho_zoomProporcionalAPressao_eParaAoSoltar() {
+        c.config = MotionConfig(zoomSpeedPercent = 100)
         c.setAnalogZoom(0.2)
         tick(3)
         val leve = sent.last { it.isZoom() }.zoomSpeed()
@@ -215,5 +216,63 @@ class ControllerTest {
         c.releaseAll()
         tick(1)
         assertFalse(c.lastSentPan != 0 || c.lastSentTilt != 0 || c.lastSentZoom != 0)
+    }
+
+    @Test
+    fun velocidadeDoZoom_limitaGatilhosEBotoes() {
+        c.config = MotionConfig(zoomSpeedPercent = 50)
+        c.setAnalogZoom(1.0)
+        tick(3)
+        assertEquals(4, sent.last { it.isZoom() }.zoomSpeed())
+        c.setAnalogZoom(0.0); tick(2)
+        c.setScreenZoom(-1)
+        tick(3)
+        assertEquals(-4, sent.last { it.isZoom() }.zoomSpeed())
+        c.setScreenZoom(0); tick(2)
+        c.config = MotionConfig(zoomSpeedPercent = 1)
+        c.setAnalogZoom(1.0); tick(3)
+        assertEquals("nunca abaixo da velocidade 1", 1, sent.last { it.isZoom() }.zoomSpeed())
+    }
+
+    private fun panAtZoom(level: Double?, cfg: MotionConfig): Int {
+        val s = mutableListOf<ByteArray>()
+        val ctl = PtzController { s += it }
+        ctl.config = cfg
+        ctl.zoomLevel = level
+        ctl.setPhysicalStick(1.0, 0.0)
+        var t = 0L
+        repeat(5) { t += 20; ctl.tick(0.02, t) }
+        return s.last { it.isPanTilt() }.panSpeed()
+    }
+
+    @Test
+    fun zoomAlto_reduzPanTiltAutomaticamente() {
+        val cfg = MotionConfig(speedPercent = 100, rampPercent = 0, zoomSlowdownEnabled = true, zoomSlowdownPercent = 80)
+        val afastado = panAtZoom(0.0, cfg)
+        val meio = panAtZoom(0.5, cfg)
+        val maximo = panAtZoom(1.0, cfg)
+        assertEquals(24, afastado)
+        assertTrue("meio=$meio", meio in 15..19)
+        assertEquals(5, maximo)
+        assertTrue(afastado > meio && meio > maximo)
+    }
+
+    @Test
+    fun zoomAlto_semReducaoQuandoDesligadoOuSemPosicao() {
+        val cfg = MotionConfig(speedPercent = 100, rampPercent = 0, zoomSlowdownEnabled = false)
+        assertEquals(24, panAtZoom(1.0, cfg))
+        assertEquals(24, panAtZoom(null, cfg.copy(zoomSlowdownEnabled = true)))
+    }
+
+    @Test
+    fun zoomAlto_reducaoValeTambemParaOJoystickDaTelaEDirecional() {
+        val s = mutableListOf<ByteArray>()
+        val ctl = PtzController { s += it }
+        ctl.config = MotionConfig(speedPercent = 100, rampPercent = 0, zoomSlowdownPercent = 80)
+        ctl.zoomLevel = 1.0
+        ctl.setPadPanTilt(1, 0)
+        var t = 0L
+        repeat(5) { t += 20; ctl.tick(0.02, t) }
+        assertEquals(5, s.last { it.isPanTilt() }.panSpeed())
     }
 }

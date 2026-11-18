@@ -32,6 +32,7 @@ import com.ptzstudio.android.core.MotionConfig
 fun SettingsScreen(engine: Engine, onBack: () -> Unit, onMapping: () -> Unit) {
     val settings by engine.settings.collectAsState()
     val gamepad by engine.gamepad.collectAsState()
+    val zoom by engine.zoomLevel.collectAsState()
     val m = settings.motion
     fun set(new: MotionConfig) = engine.setMotion(new)
 
@@ -49,11 +50,33 @@ fun SettingsScreen(engine: Engine, onBack: () -> Unit, onMapping: () -> Unit) {
                 PercentSlider("Zona morta", m.deadzonePercent, 0..30) { set(m.copy(deadzonePercent = it)) }
                 Hint("Folga do centro do analógico que é ignorada (evita a câmera andar sozinha).")
                 PercentSlider("Movimento fino", m.finePercent, 5..100) { set(m.copy(finePercent = it)) }
-                PercentSlider("Zoom pelos botões", m.zoomButtonPercent, 1..100) { set(m.copy(zoomButtonPercent = it)) }
+                PercentSlider("Velocidade do zoom", m.zoomSpeedPercent, 1..100) { set(m.copy(zoomSpeedPercent = it)) }
+                Hint("Vale para os gatilhos e para os botões de zoom. Também dá para mudar na tela principal.")
                 PercentSlider("Trava de diagonal", m.diagonalLockDeg, 0..44, unit = "°") { set(m.copy(diagonalLockDeg = it)) }
                 Hint("Se o analógico está quase na horizontal ou na vertical, o outro eixo é ignorado (sem diagonais sem querer).")
                 SwitchRow("Inverter vertical (Tilt)", m.invertTilt) { set(m.copy(invertTilt = it)) }
                 SwitchRow("Inverter horizontal (Pan)", m.invertPan) { set(m.copy(invertPan = it)) }
+            }
+
+            SectionTitle("Pan/Tilt mais lento com zoom alto")
+            Panel(Modifier.fillMaxWidth()) {
+                SwitchRow("Reduzir a velocidade conforme o zoom aumenta", m.zoomSlowdownEnabled) { set(m.copy(zoomSlowdownEnabled = it)) }
+                PercentSlider("Redução com o zoom no máximo", m.zoomSlowdownPercent, 0..95) { set(m.copy(zoomSlowdownPercent = it)) }
+                Hint(
+                    "Ex.: 80% = com o zoom todo aproximado, o Pan/Tilt anda a 20% da velocidade. A redução começa leve e " +
+                        "aumenta mais no fim do zoom. O app pergunta a posição do zoom à câmera várias vezes por segundo.",
+                )
+                Text(
+                    when (val z = zoom) {
+                        null -> "Zoom agora: a câmera não informou a posição. Sem essa informação a redução fica desligada."
+                        else -> "Zoom agora: ${(z * 100).toInt()}% · Pan/Tilt a ${(m.zoomSlowdownFactor(z) * 100).toInt()}% da velocidade"
+                    },
+                    color = Palette.Soft, fontSize = 13.sp,
+                )
+                PadTile("Calibrar: o zoom está todo aproximado agora", Modifier.fillMaxWidth()) {
+                    engine.calibrateZoomMax()
+                }
+                Hint("Use se o zoom nunca chega a 100%: aproxime o zoom até o fim e toque no botão acima.")
             }
 
             SectionTitle("Vídeo ao vivo")

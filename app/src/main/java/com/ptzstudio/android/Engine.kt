@@ -22,6 +22,7 @@ import com.ptzstudio.android.core.PadState
 import com.ptzstudio.android.core.PtzController
 import com.ptzstudio.android.core.SettingsCodec
 import com.ptzstudio.android.core.ViscaCommands
+import com.ptzstudio.android.core.ViscaReplies
 import com.ptzstudio.android.core.ViscaUdpClient
 import com.ptzstudio.android.core.WsDiscovery
 import kotlinx.coroutines.Dispatchers
@@ -85,7 +86,20 @@ class Engine(private val context: Context) {
     @Volatile private var connectedAt = 0L
     @Volatile private var foreground = true
 
-    private val client = ViscaUdpClient { lastReplyAt = SystemClock.elapsedRealtime() }
+    private val _zoomLevel = MutableStateFlow<Double?>(null)
+    /** Zoom atual de 0 (afastado) a 1 (todo aproximado), lido da câmera. Nulo = a câmera não informou. */
+    val zoomLevel: StateFlow<Double?> = _zoomLevel.asStateFlow()
+
+    @Volatile private var rawZoom: Int? = null
+    @Volatile private var lastZoomReplyAt = 0L
+    @Volatile private var lastZoomPollMs = 0L
+    @Volatile private var zoomFastUntil = 0L
+    private var prevSentZoom = 0
+
+    private val client = ViscaUdpClient { data ->
+        lastReplyAt = SystemClock.elapsedRealtime()
+        ViscaReplies.zoomPosition(data)?.let { onZoomPosition(it) }
+    }
     val controller = PtzController(client)
     private val mapping = MappingEngine(controller) { a -> main.post { runAction(a) } }
 
@@ -134,6 +148,7 @@ class Engine(private val context: Context) {
             lastTickNs = nowNs
             val nowMs = SystemClock.elapsedRealtime()
             controller.tick(dt, nowMs)
+            pollZoom(nowMs)
             if (foreground && nowMs - lastHealthMs >= HEALTH_INTERVAL_MS) {
                 lastHealthMs = nowMs
                 health(nowMs)
@@ -157,6 +172,54 @@ class Engine(private val context: Context) {
         }
     }
 
+    /**
+     * Pergunta a posição do zoom à câmera: 4 vezes por segundo enquanto o zoom anda (e logo depois),
+     * e a cada 1,5 s parado. A resposta ajusta a redução automática do Pan/Tilt.
+     */
+    private fun pollZoom(nowMs: Long) {
+        val cam = _settings.value.selectedCamera ?: return
+        if (!foreground || cam.ip.isBlank()) return
+        val zoomNow = controller.lastSentZoom
+        if (zoomNow == 0 && prevSentZoom != 0) zoomFastUntil = nowMs + 1500
+        prevSentZoom = zoomNow
+        val interval = if (zoomNow != 0 || nowMs < zoomFastUntil) 250L else 1500L
+        if (nowMs - lastZoomPollMs >= interval) {
+            lastZoomPollMs = nowMs
+            client.send(ViscaCommands.zoomPositionInquiry(cam.viscaAddress))
+        }
+        if (lastZoomReplyAt != 0L && nowMs - lastZoomReplyAt > ZOOM_STALE_MS) {
+            lastZoomReplyAt = 0L
+            rawZoom = null
+            controller.zoomLevel = null
+            _zoomLevel.value = null
+        }
+    }
+
+    private fun onZoomPosition(pos: Int) {
+        lastZoomReplyAt = SystemClock.elapsedRealtime()
+        rawZoom = pos
+        val max = _settings.value.motion.zoomMaxPosition.coerceAtLeast(1)
+        if (pos > max) {
+            // A câmera foi além do máximo conhecido: aprende o novo máximo.
+            main.post { val m = _settings.value.motion; if (pos > m.zoomMaxPosition) setMotion(m.copy(zoomMaxPosition = pos)) }
+        }
+        val level = (pos.toDouble() / max).coerceIn(0.0, 1.0)
+        controller.zoomLevel = level
+        _zoomLevel.value = level
+    }
+
+    /** Grava a posição atual do zoom como "zoom máximo" (usar com o zoom todo aproximado). */
+    fun calibrateZoomMax(): Boolean {
+        val pos = rawZoom
+        if (pos == null || pos < 256) {
+            say("A câmera não informou a posição do zoom")
+            return false
+        }
+        setMotion(_settings.value.motion.copy(zoomMaxPosition = pos))
+        say("Zoom máximo calibrado")
+        return true
+    }
+
     private fun applyCamera(reconnect: Boolean) {
         val cam = _settings.value.selectedCamera
         if (cam == null || cam.ip.isBlank()) {
@@ -172,6 +235,10 @@ class Engine(private val context: Context) {
             connectedAt = SystemClock.elapsedRealtime()
             lastReplyAt = 0L
             lastHealthMs = 0L
+            lastZoomReplyAt = 0L
+            rawZoom = null
+            controller.zoomLevel = null
+            _zoomLevel.value = null
             _link.value = LinkState.CONNECTING
         }
     }
@@ -249,6 +316,7 @@ class Engine(private val context: Context) {
 
     fun recallPreset(n: Int) {
         controller.sendOnce(ViscaCommands.presetRecall(address, n))
+        zoomFastUntil = SystemClock.elapsedRealtime() + 8000
         say("${presetName(n)}")
     }
 
@@ -259,6 +327,7 @@ class Engine(private val context: Context) {
 
     fun home() {
         controller.sendOnce(ViscaCommands.home(address))
+        zoomFastUntil = SystemClock.elapsedRealtime() + 8000
         say("Home")
     }
 
@@ -461,6 +530,7 @@ class Engine(private val context: Context) {
         private const val KEY_SETTINGS = "settings"
         private const val HEALTH_INTERVAL_MS = 2000L
         private const val REPLY_WINDOW_MS = 5000L
+        private const val ZOOM_STALE_MS = 5000L
         const val DETECT_STICK = 0.8
         const val DETECT_TRIGGER = 0.6
     }

@@ -28,8 +28,14 @@ data class MotionConfig(
     val deadzonePercent: Int = 12,
     /** Força do "movimento fino", em % da inclinação. */
     val finePercent: Int = 35,
-    /** Velocidade do zoom pelos botões (não pelos gatilhos), em %. */
-    val zoomButtonPercent: Int = 60,
+    /** Velocidade do zoom (gatilhos e botões), 1% a 100% da velocidade máxima da câmera. */
+    val zoomSpeedPercent: Int = 70,
+    /** Reduz o Pan/Tilt automaticamente quando o zoom aumenta. */
+    val zoomSlowdownEnabled: Boolean = true,
+    /** Quanto o Pan/Tilt é reduzido com o zoom no máximo (0% a 95%). */
+    val zoomSlowdownPercent: Int = 80,
+    /** Valor que a câmera informa com o zoom todo aproximado (calibrável). */
+    val zoomMaxPosition: Int = 16384,
     val invertPan: Boolean = false,
     val invertTilt: Boolean = false,
     /** Trava de diagonal: abaixo deste ângulo o eixo secundário é ignorado (0 = desligada). */
@@ -40,9 +46,22 @@ data class MotionConfig(
         rampPercent = rampPercent.coerceIn(0, 100),
         deadzonePercent = deadzonePercent.coerceIn(0, 50),
         finePercent = finePercent.coerceIn(5, 100),
-        zoomButtonPercent = zoomButtonPercent.coerceIn(1, 100),
+        zoomSpeedPercent = zoomSpeedPercent.coerceIn(1, 100),
+        zoomSlowdownPercent = zoomSlowdownPercent.coerceIn(0, 95),
+        zoomMaxPosition = zoomMaxPosition.coerceIn(256, 0xFFFF),
         diagonalLockDeg = diagonalLockDeg.coerceIn(0, 44),
     )
+
+    /**
+     * Quanto sobra da velocidade de Pan/Tilt para um zoom de 0 (afastado) a 1 (todo aproximado).
+     * A redução cresce mais no fim do zoom, onde a imagem fica mais sensível.
+     */
+    fun zoomSlowdownFactor(zoom: Double?): Double {
+        if (!zoomSlowdownEnabled || zoom == null) return 1.0
+        val z = zoom.coerceIn(0.0, 1.0)
+        val r = zoomSlowdownPercent.coerceIn(0, 95) / 100.0
+        return 1.0 - r * Math.pow(z, 1.5)
+    }
 
     /** Segundos para ir do repouso à velocidade máxima. */
     val rampSeconds: Double get() = rampPercent.coerceIn(0, 100) / 100.0 * 2.0
@@ -61,6 +80,9 @@ data class MotionConfig(
 class PtzController(private val sender: PacketSender) {
     @Volatile var limits: CameraLimits = CameraLimits()
     @Volatile var config: MotionConfig = MotionConfig()
+
+    /** Posição atual do zoom, de 0 (afastado) a 1 (todo aproximado); nulo = desconhecida (sem redução). */
+    @Volatile var zoomLevel: Double? = null
 
     private val lock = Any()
 
@@ -194,7 +216,7 @@ class PtzController(private val sender: PacketSender) {
         if (cfg.invertTilt) y = -y
 
         // 2) Velocidade-alvo com curva e rampa.
-        val scale = cfg.speedPercent / 100.0
+        val scale = cfg.speedPercent / 100.0 * cfg.zoomSlowdownFactor(zoomLevel)
         val panMax = (lim.maxPan.coerceIn(1, ViscaCommands.MAX_PAN_SPEED) * scale).coerceAtLeast(1.0)
         val tiltMax = (lim.maxTilt.coerceIn(1, ViscaCommands.MAX_TILT_SPEED) * scale).coerceAtLeast(1.0)
         val ramp = cfg.rampSeconds
@@ -212,9 +234,10 @@ class PtzController(private val sender: PacketSender) {
         // 3) Zoom: pressão do gatilho -> velocidade (linear, sem rampa: soltar para na hora).
         var z = analogZoom
         val btnZoom = (padZoom + screenZoom).coerceIn(-1, 1)
-        if (btnZoom != 0) z = btnZoom * cfg.zoomButtonPercent / 100.0
+        if (btnZoom != 0) z = btnZoom.toDouble()
         z = AxisMath.deadzone(z.coerceIn(-1.0, 1.0), 0.05)
-        val zoomMax = lim.maxZoom.coerceIn(1, ViscaCommands.MAX_ZOOM_SPEED)
+        val cameraZoomMax = lim.maxZoom.coerceIn(1, ViscaCommands.MAX_ZOOM_SPEED)
+        val zoomMax = (cameraZoomMax * cfg.zoomSpeedPercent / 100.0).roundToInt().coerceIn(1, cameraZoomMax)
         val zoomSpeed = if (z == 0.0) 0 else sign(z).toInt() * (1 + ((zoomMax - 1) * abs(z)).roundToInt()).coerceIn(1, zoomMax)
 
         applyPanTilt(lim, toInt(p, lim.maxPan), toInt(t, lim.maxTilt), nowMs)

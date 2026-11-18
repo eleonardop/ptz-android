@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -42,7 +41,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -107,14 +105,16 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                     Column(Modifier.weight(1.15f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         video(Modifier.fillMaxWidth().weight(1f))
                         PresetRow(settings, engine, onEdit = { editPreset = it })
+                        QuickButtons(engine)
                     }
                     Column(
                         Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        JoystickAndZoom(engine, joystickSize = min(200f, boxH.value * 0.52f).dp)
+                        JoystickAndZoom(engine, joystickSize = min(220f, boxH.value * 0.56f).dp)
                         SpeedSlider(engine, settings)
-                        QuickButtons(engine)
+                        ZoomSpeedSlider(engine, settings)
+                        ZoomInfo(engine, settings)
                     }
                 }
             } else {
@@ -123,8 +123,10 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     video(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-                    JoystickAndZoom(engine, joystickSize = min(240f, boxW.value * 0.62f).dp)
+                    JoystickAndZoom(engine, joystickSize = min(260f, boxW.value * 0.66f).dp)
                     SpeedSlider(engine, settings)
+                    ZoomSpeedSlider(engine, settings)
+                    ZoomInfo(engine, settings)
                     SectionTitle("Posições salvas")
                     PresetGrid(settings, engine, onEdit = { editPreset = it })
                     QuickButtons(engine)
@@ -229,29 +231,48 @@ private fun JoystickAndZoom(engine: Engine, joystickSize: Dp) {
 
 /**
  * Joystick da tela: arraste o círculo azul. A velocidade acompanha a distância do centro (movimento gradual).
- * As setas nas bordas movem enquanto estão apertadas.
+ * As setas ficam FORA do círculo, com espaço entre elas: tocar numa seta nunca puxa o joystick,
+ * e o joystick só responde a toques que começam dentro do círculo.
  */
 @Composable
 private fun VirtualJoystick(engine: Engine, size: Dp) {
-    var knob by remember { mutableStateOf(Offset.Zero) }
-    var radiusPx by remember { mutableFloatStateOf(1f) }
+    val arrow = maxOf(size * 0.24f, 44.dp)
+    val gap = 6.dp
+    val stick = size - arrow * 2 - gap * 2
     Box(Modifier.size(size)) {
-        Canvas(
-            Modifier
-                .fillMaxSize()
-                .semantics { contentDescription = "Joystick: arraste para mover a câmera" }
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown()
-                        val center = Offset(this.size.width / 2f, this.size.height / 2f)
-                        val r = min(this.size.width, this.size.height) / 2f * 0.72f
-                        radiusPx = r
+        JoystickCircle(engine, Modifier.align(Alignment.Center).size(stick))
+        ArrowHold(Icons.Default.KeyboardArrowUp, "Para cima", Modifier.align(Alignment.TopCenter).size(arrow),
+            { engine.setScreenPanTilt(0, 1) }, { engine.setScreenPanTilt(0, 0) })
+        ArrowHold(Icons.Default.KeyboardArrowDown, "Para baixo", Modifier.align(Alignment.BottomCenter).size(arrow),
+            { engine.setScreenPanTilt(0, -1) }, { engine.setScreenPanTilt(0, 0) })
+        ArrowHold(Icons.Default.KeyboardArrowLeft, "Para a esquerda", Modifier.align(Alignment.CenterStart).size(arrow),
+            { engine.setScreenPanTilt(-1, 0) }, { engine.setScreenPanTilt(0, 0) })
+        ArrowHold(Icons.Default.KeyboardArrowRight, "Para a direita", Modifier.align(Alignment.CenterEnd).size(arrow),
+            { engine.setScreenPanTilt(1, 0) }, { engine.setScreenPanTilt(0, 0) })
+    }
+}
+
+@Composable
+private fun JoystickCircle(engine: Engine, modifier: Modifier) {
+    var knob by remember { mutableStateOf(Offset.Zero) }
+    Canvas(
+        modifier
+            .semantics { contentDescription = "Joystick: arraste para mover a câmera" }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    val center = Offset(this.size.width / 2f, this.size.height / 2f)
+                    val outer = min(this.size.width, this.size.height) / 2f
+                    val dist = down.position - center
+                    // Toque fora do círculo (nos cantos): ignorado.
+                    if (hypot(dist.x, dist.y) <= outer) {
+                        val travel = outer * 0.75f
                         fun update(p: Offset) {
                             var d = p - center
                             val len = hypot(d.x, d.y)
-                            if (len > r) d = d * (r / len)
+                            if (len > travel) d = d * (travel / len)
                             knob = d
-                            engine.setVirtualStick((d.x / r).toDouble(), (-d.y / r).toDouble())
+                            engine.setVirtualStick((d.x / travel).toDouble(), (-d.y / travel).toDouble())
                         }
                         update(down.position)
                         down.consume()
@@ -265,63 +286,65 @@ private fun VirtualJoystick(engine: Engine, size: Dp) {
                         knob = Offset.Zero
                         engine.setVirtualStick(0.0, 0.0)
                     }
-                },
-        ) {
-            val c = Offset(this.size.width / 2f, this.size.height / 2f)
-            val outer = min(this.size.width, this.size.height) / 2f
-            drawCircle(Color(0xFF151A21), outer, c)
-            drawCircle(Palette.Border, outer, c, style = Stroke(1.dp.toPx()))
-            drawCircle(Palette.Line, outer * 0.72f, c, style = Stroke(1.dp.toPx()))
-            val knobR = outer * 0.33f
-            drawCircle(Palette.AccentDim, knobR + 4.dp.toPx(), c + knob)
-            drawCircle(Palette.Accent, knobR, c + knob)
-        }
-        val arrow = size * 0.22f
-        ArrowHold(Icons.Default.KeyboardArrowUp, "Para cima", Modifier.align(Alignment.TopCenter), arrow,
-            { engine.setScreenPanTilt(0, 1) }, { engine.setScreenPanTilt(0, 0) })
-        ArrowHold(Icons.Default.KeyboardArrowDown, "Para baixo", Modifier.align(Alignment.BottomCenter), arrow,
-            { engine.setScreenPanTilt(0, -1) }, { engine.setScreenPanTilt(0, 0) })
-        ArrowHold(Icons.Default.KeyboardArrowLeft, "Para a esquerda", Modifier.align(Alignment.CenterStart), arrow,
-            { engine.setScreenPanTilt(-1, 0) }, { engine.setScreenPanTilt(0, 0) })
-        ArrowHold(Icons.Default.KeyboardArrowRight, "Para a direita", Modifier.align(Alignment.CenterEnd), arrow,
-            { engine.setScreenPanTilt(1, 0) }, { engine.setScreenPanTilt(0, 0) })
+                }
+            },
+    ) {
+        val c = Offset(this.size.width / 2f, this.size.height / 2f)
+        val outer = min(this.size.width, this.size.height) / 2f
+        drawCircle(Color(0xFF151A21), outer, c)
+        drawCircle(Palette.Border, outer, c, style = Stroke(1.dp.toPx()))
+        drawCircle(Palette.Line, outer * 0.75f, c, style = Stroke(1.dp.toPx()))
+        val knobR = outer * 0.36f
+        drawCircle(Palette.AccentDim, knobR + 4.dp.toPx(), c + knob)
+        drawCircle(Palette.Accent, knobR, c + knob)
     }
 }
 
 @Composable
-private fun ArrowHold(icon: ImageVector, label: String, modifier: Modifier, size: Dp, onDown: () -> Unit, onUp: () -> Unit) {
-    var pressed by remember { mutableStateOf(false) }
-    Box(
-        modifier
-            .size(maxOf(size, 44.dp))
-            .wrapContentSize()
-            .semantics { contentDescription = label }
-            .pointerInput(Unit) {
-                detectTapGestures(onPress = {
-                    pressed = true
-                    onDown()
-                    try { tryAwaitRelease() } finally { pressed = false; onUp() }
-                })
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, contentDescription = null, tint = if (pressed) Palette.AccentText else Palette.Muted, modifier = Modifier.size(30.dp))
+private fun ArrowHold(icon: ImageVector, label: String, modifier: Modifier, onDown: () -> Unit, onUp: () -> Unit) {
+    HoldButton(label, onDown, onUp, modifier) {
+        Icon(icon, contentDescription = null, tint = Palette.Text, modifier = Modifier.size(28.dp))
     }
 }
 
 @Composable
 private fun SpeedSlider(engine: Engine, settings: AppSettings) {
     val m = settings.motion
+    PercentRow("Velocidade", m.speedPercent) { engine.setMotion(m.copy(speedPercent = it)) }
+}
+
+@Composable
+private fun ZoomSpeedSlider(engine: Engine, settings: AppSettings) {
+    val m = settings.motion
+    PercentRow("Zoom", m.zoomSpeedPercent) { engine.setMotion(m.copy(zoomSpeedPercent = it)) }
+}
+
+/** Mostra o zoom atual e quanto o Pan/Tilt foi reduzido por causa dele. */
+@Composable
+private fun ZoomInfo(engine: Engine, settings: AppSettings) {
+    val zoom by engine.zoomLevel.collectAsState()
+    val m = settings.motion
+    val z = zoom
+    val text = when {
+        z == null -> "Zoom: a câmera não informou a posição (Pan/Tilt sem redução automática)"
+        !m.zoomSlowdownEnabled -> "Zoom ${(z * 100).toInt()}%"
+        else -> "Zoom ${(z * 100).toInt()}% · Pan/Tilt a ${(m.zoomSlowdownFactor(z) * 100).toInt()}% da velocidade"
+    }
+    Text(text, color = if (z == null) Palette.Muted else Palette.Soft, fontSize = 12.sp)
+}
+
+@Composable
+private fun PercentRow(label: String, value: Int, onChange: (Int) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Velocidade", color = Palette.Muted, fontSize = 13.sp, modifier = Modifier.width(82.dp))
+        Text(label, color = Palette.Muted, fontSize = 13.sp, modifier = Modifier.width(82.dp))
         Slider(
-            value = m.speedPercent.toFloat(),
-            onValueChange = { engine.setMotion(m.copy(speedPercent = it.toInt())) },
+            value = value.toFloat(),
+            onValueChange = { onChange(it.toInt().coerceIn(1, 100)) },
             valueRange = 1f..100f,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).height(36.dp),
             colors = SliderDefaults.colors(thumbColor = Palette.AccentBright, activeTrackColor = Palette.AccentBright),
         )
-        Text("${m.speedPercent}%", color = Palette.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(44.dp), textAlign = TextAlign.End)
+        Text("$value%", color = Palette.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(44.dp), textAlign = TextAlign.End)
     }
 }
 

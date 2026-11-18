@@ -71,7 +71,7 @@ class MappingTest {
 
     @Test
     fun gatilhos_viramZoomProporcional() {
-        controller.config = MotionConfig(rampPercent = 0)
+        controller.config = MotionConfig(rampPercent = 0, zoomSpeedPercent = 100)
         engine.update(PadState(rt = 1.0), map)
         var now = 0L
         repeat(3) { now += 20; controller.tick(0.02, now) }

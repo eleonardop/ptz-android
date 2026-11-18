@@ -63,7 +63,10 @@ object SettingsCodec {
             put("rampPercent", m.rampPercent)
             put("deadzonePercent", m.deadzonePercent)
             put("finePercent", m.finePercent)
-            put("zoomButtonPercent", m.zoomButtonPercent)
+            put("zoomSpeedPercent", m.zoomSpeedPercent)
+            put("zoomSlowdownEnabled", m.zoomSlowdownEnabled)
+            put("zoomSlowdownPercent", m.zoomSlowdownPercent)
+            put("zoomMaxPosition", m.zoomMaxPosition)
             put("invertPan", m.invertPan)
             put("invertTilt", m.invertTilt)
             put("diagonalLockDeg", m.diagonalLockDeg)
@@ -110,7 +113,10 @@ object SettingsCodec {
                 rampPercent = mj.optInt("rampPercent", dm.rampPercent),
                 deadzonePercent = mj.optInt("deadzonePercent", dm.deadzonePercent),
                 finePercent = mj.optInt("finePercent", dm.finePercent),
-                zoomButtonPercent = mj.optInt("zoomButtonPercent", dm.zoomButtonPercent),
+                zoomSpeedPercent = mj.optInt("zoomSpeedPercent", dm.zoomSpeedPercent),
+                zoomSlowdownEnabled = mj.optBoolean("zoomSlowdownEnabled", dm.zoomSlowdownEnabled),
+                zoomSlowdownPercent = mj.optInt("zoomSlowdownPercent", dm.zoomSlowdownPercent),
+                zoomMaxPosition = mj.optInt("zoomMaxPosition", dm.zoomMaxPosition),
                 invertPan = mj.optBoolean("invertPan", dm.invertPan),
                 invertTilt = mj.optBoolean("invertTilt", dm.invertTilt),
                 diagonalLockDeg = mj.optInt("diagonalLockDeg", dm.diagonalLockDeg),

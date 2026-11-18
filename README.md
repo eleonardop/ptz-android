@@ -49,10 +49,13 @@ Cada botão pode ser mudado em **Ajustes → Mapear botões do controle**. **Res
 
 ## Telas
 
-- **Controle**: vídeo ao vivo (RTSP), joystick da tela (arrastar = movimento gradual; setas = segurar para mover), zoom (segurar),
-  velocidade de 1% a 100%, presets 1 a 8 (tocar = ir; tocar e segurar = gravar posição / mudar nome), Autofoco, Brilho, Home.
+- **Controle**: vídeo ao vivo (RTSP), joystick da tela (arrastar = movimento gradual; setas separadas em volta = segurar para mover),
+  zoom (segurar), velocidade do Pan/Tilt e do zoom de 1% a 100%, zoom atual, presets 1 a 8 (tocar = ir; tocar e segurar = gravar
+  posição / mudar nome), Autofoco, Brilho, Home.
 - **Câmeras**: câmeras salvas com status (online/sem resposta), busca ONVIF na rede e cadastro pelo IP.
-- **Ajustes**: velocidade, aceleração gradual, zona morta, movimento fino, trava de diagonal, inversões, vídeo.
+- **Ajustes**: velocidade, aceleração gradual, zona morta, movimento fino, velocidade do zoom, trava de diagonal, inversões, vídeo e
+  **Pan/Tilt mais lento com zoom alto**: o app lê a posição do zoom na câmera e reduz a velocidade do Pan/Tilt conforme o zoom
+  aumenta (padrão: 80% mais lento com o zoom no máximo).
 - **Mapeamento**: desenho do controle, função de cada botão e **Detectar botão** (aperte no controle para encontrar).
 
 ## Compilação
