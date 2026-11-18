@@ -12,7 +12,21 @@ import com.ptzstudio.android.ui.PtzApp
 
 /** Guarda um único Engine para o app inteiro (sobrevive a girar a tela). */
 class PtzApplication : Application() {
-    val engine: Engine by lazy { Engine(this) }
+    private val lazyEngine = lazy { Engine(this) }
+    val engine: Engine by lazyEngine
+
+    override fun onCreate() {
+        super.onCreate()
+        // Se o app fechar por um erro inesperado, manda a parada para a câmera antes de sair.
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            try {
+                if (lazyEngine.isInitialized()) engine.emergencyStop()
+            } catch (_: Throwable) {
+            }
+            previous?.uncaughtException(thread, error)
+        }
+    }
 }
 
 class MainActivity : ComponentActivity() {
@@ -34,6 +48,12 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         engine.onBackground()
         super.onStop()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Cortina de notificações, avisos do sistema, tela dividida: o "soltou" do controle iria para outra janela.
+        if (!hasFocus) engine.onFocusLost()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {

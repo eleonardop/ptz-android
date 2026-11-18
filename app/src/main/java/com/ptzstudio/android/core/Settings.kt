@@ -70,6 +70,7 @@ object SettingsCodec {
             put("zoomSlowdownEnabled", m.zoomSlowdownEnabled)
             put("zoomSlowdownPercent", m.zoomSlowdownPercent)
             put("zoomMaxPosition", m.zoomMaxPosition)
+            put("inputWatchdogEnabled", m.inputWatchdogEnabled)
             put("invertPan", m.invertPan)
             put("invertTilt", m.invertTilt)
             put("diagonalLockDeg", m.diagonalLockDeg)
@@ -80,7 +81,10 @@ object SettingsCodec {
         return o.toString()
     }
 
-    fun fromJson(text: String?): AppSettings {
+    fun fromJson(text: String?): AppSettings = tryParse(text) ?: AppSettings()
+
+    /** Igual a [fromJson], mas devolve nulo se o texto existe e está estragado (para guardar uma cópia antes de sobrescrever). */
+    fun tryParse(text: String?): AppSettings? {
         if (text.isNullOrBlank()) return AppSettings()
         return try {
             val o = JSONObject(text)
@@ -120,6 +124,7 @@ object SettingsCodec {
                 zoomSlowdownEnabled = mj.optBoolean("zoomSlowdownEnabled", dm.zoomSlowdownEnabled),
                 zoomSlowdownPercent = mj.optInt("zoomSlowdownPercent", dm.zoomSlowdownPercent),
                 zoomMaxPosition = mj.optInt("zoomMaxPosition", dm.zoomMaxPosition),
+                inputWatchdogEnabled = mj.optBoolean("inputWatchdogEnabled", dm.inputWatchdogEnabled),
                 invertPan = mj.optBoolean("invertPan", dm.invertPan),
                 invertTilt = mj.optBoolean("invertTilt", dm.invertTilt),
                 diagonalLockDeg = mj.optInt("diagonalLockDeg", dm.diagonalLockDeg),
@@ -151,7 +156,7 @@ object SettingsCodec {
                 videoEnabled = if (o.optInt("version", 1) < 2) true else o.optBoolean("videoEnabled", true),
             )
         } catch (_: Exception) {
-            AppSettings()
+            null
         }
     }
 }

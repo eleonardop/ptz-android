@@ -13,6 +13,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -22,6 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.delay
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -61,6 +66,7 @@ fun RtspVideo(url: String, modifier: Modifier = Modifier) {
             prepare()
         }
     }
+    var failures by remember(url) { mutableIntStateOf(0) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlayerError(e: PlaybackException) {
@@ -68,7 +74,10 @@ fun RtspVideo(url: String, modifier: Modifier = Modifier) {
             }
 
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_READY) error = null
+                if (state == Player.STATE_READY) {
+                    error = null
+                    failures = 0
+                }
             }
         }
         player.addListener(listener)
@@ -76,6 +85,33 @@ fun RtspVideo(url: String, modifier: Modifier = Modifier) {
             player.removeListener(listener)
             player.release()
         }
+    }
+
+    // Queda do Wi-Fi ou da câmera: tenta de novo sozinho, esperando um pouco mais a cada vez (3 s, 6 s, 10 s...).
+    LaunchedEffect(error, attempt) {
+        if (error != null) {
+            delay(minOf(3000L * (failures + 1), 10_000L))
+            failures++
+            error = null
+            attempt++
+        }
+    }
+
+    // App fora da tela ou tela bloqueada: para de receber e decodificar o vídeo; volta ao reabrir.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> player.stop()
+                Lifecycle.Event.ON_START -> {
+                    if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                    player.playWhenReady = true
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {

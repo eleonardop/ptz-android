@@ -1,5 +1,9 @@
 package com.ptzstudio.android.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -66,6 +70,7 @@ fun MappingScreen(engine: Engine, onBack: () -> Unit) {
 
     val highlight = if (active.isNotEmpty()) active + selected else setOf(selected)
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().background(Palette.Ground)) {
         ScreenBar("Mapeamento do controle", onBack)
         Column(
@@ -120,6 +125,7 @@ fun MappingScreen(engine: Engine, onBack: () -> Unit) {
             selected = b
             detecting = false
         }
+    }
     }
     if (confirmReset) {
         AlertDialog(
@@ -205,63 +211,66 @@ private fun DetectDialog(engine: Engine, onClose: () -> Unit, onDetected: (PadBu
         }
     }
 
-    AlertDialog(
-        onDismissRequest = onClose,
-        containerColor = Palette.Card,
-        title = { Text("Detectar botão", color = Palette.Text) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                when (val r = result) {
-                    null -> if (seconds > 0) {
-                        Text("Aperte o botão no controle", color = Palette.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "Pode ser qualquer botão, gatilho ou analógico. Os analógicos são reconhecidos quando você empurra até o fim.",
-                            color = Palette.Muted, fontSize = 13.sp,
-                        )
-                        Text("Esperando… $seconds s", color = Palette.Soft, fontSize = 12.sp)
-                    } else {
-                        Text("Nenhum sinal recebido", color = Palette.RedText, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            "Alguns botões não chegam ao celular: o Home, o Screenshot, o M e os traseiros L4 e R4 podem ser usados pelo " +
-                                "próprio controle ou pelo Android. Para os traseiros, programe no controle o L4 ou o R4 para copiar outro botão e detecte de novo.",
-                            color = Palette.Soft, fontSize = 13.sp,
-                        )
-                    }
-                    is DetectEvent.Button -> {
-                        Text("${r.button.badge} · ${r.button.label}", color = Palette.GreenText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Text("Detectado", color = Palette.GreenText, fontSize = 13.sp)
-                        if (r.button == PadButton.LT || r.button == PadButton.RT) {
-                            val v = if (r.button == PadButton.LT) pad.lt else pad.rt
-                            Text("Pressão agora: ${(v * 100).toInt()}%", color = Palette.Soft, fontSize = 13.sp)
-                            LinearProgressIndicator(progress = { v.toFloat() }, modifier = Modifier.fillMaxWidth(), color = Palette.AccentBright)
+    // Fica dentro da própria tela (não é uma janela separada): assim os botões do controle continuam chegando ao app.
+    BackHandler(onBack = onClose)
+    Box(
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.62f)).pointerInput(Unit) { detectTapGestures { } },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier.padding(24.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(Palette.Card)
+                .verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 12.dp, top = 22.dp, bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text("Detectar botão", color = Palette.Text, fontSize = 22.sp)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    when (val r = result) {
+                        null -> if (seconds > 0) {
+                            Text("Aperte o botão no controle", color = Palette.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Pode ser qualquer botão, gatilho ou analógico. Os analógicos são reconhecidos quando você empurra até o fim.",
+                                color = Palette.Muted, fontSize = 13.sp,
+                            )
+                            Text("Esperando… $seconds s", color = Palette.Soft, fontSize = 12.sp)
+                        } else {
+                            Text("Nenhum sinal recebido", color = Palette.RedText, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text(
+                                "Alguns botões não chegam ao celular: o Home, o Screenshot, o M e os traseiros L4 e R4 podem ser usados pelo " +
+                                    "próprio controle ou pelo Android. Para os traseiros, programe no controle o L4 ou o R4 para copiar outro botão e detecte de novo.",
+                                color = Palette.Soft, fontSize = 13.sp,
+                            )
                         }
-                    }
-                    is DetectEvent.UnknownKey -> {
-                        Text("Botão não reconhecido pelo Android (código ${r.keyCode})", color = Palette.Amber, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        Text("Qual botão do controle é este?", color = Palette.Soft, fontSize = 13.sp)
-                        for (b in PadButton.learnable) {
-                            PadTile("${b.badge} · ${b.label}", Modifier.fillMaxWidth()) {
-                                engine.learnKey(r.keyCode, b)
-                                result = DetectEvent.Button(b)
+                        is DetectEvent.Button -> {
+                            Text("${r.button.badge} · ${r.button.label}", color = Palette.GreenText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("Detectado", color = Palette.GreenText, fontSize = 13.sp)
+                            if (r.button == PadButton.LT || r.button == PadButton.RT) {
+                                val v = if (r.button == PadButton.LT) pad.lt else pad.rt
+                                Text("Pressão agora: ${(v * 100).toInt()}%", color = Palette.Soft, fontSize = 13.sp)
+                                LinearProgressIndicator(progress = { v.toFloat() }, modifier = Modifier.fillMaxWidth(), color = Palette.AccentBright)
+                            }
+                        }
+                        is DetectEvent.UnknownKey -> {
+                            Text("Botão não reconhecido pelo Android (código ${r.keyCode})", color = Palette.Amber, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Qual botão do controle é este?", color = Palette.Soft, fontSize = 13.sp)
+                            for (b in PadButton.learnable) {
+                                PadTile("${b.badge} · ${b.label}", Modifier.fillMaxWidth()) {
+                                    engine.learnKey(r.keyCode, b)
+                                    result = DetectEvent.Button(b)
+                                }
                             }
                         }
                     }
                 }
-            }
-        },
-        confirmButton = {
-            val r = result
-            when {
-                r is DetectEvent.Button -> TextButton(onClick = { onDetected(r.button) }) { Text("Configurar este botão") }
-                r == null && seconds <= 0 -> TextButton(onClick = { result = null; round++ }) { Text("Tentar de novo") }
-                else -> {}
-            }
-        },
-        dismissButton = {
-            Row {
-                if (result is DetectEvent.Button) TextButton(onClick = { result = null; round++ }) { Text("Tentar de novo") }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                val r = result
+                if (r is DetectEvent.Button) TextButton(onClick = { result = null; round++ }) { Text("Tentar de novo") }
                 TextButton(onClick = onClose) { Text("Cancelar") }
+                when {
+                    r is DetectEvent.Button -> TextButton(onClick = { onDetected(r.button) }) { Text("Configurar") }
+                    r == null && seconds <= 0 -> TextButton(onClick = { result = null; round++ }) { Text("Tentar de novo") }
+                    else -> {}
+                }
             }
-        },
-    )
+        }
+    }
 }

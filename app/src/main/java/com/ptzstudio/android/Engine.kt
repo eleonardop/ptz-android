@@ -2,6 +2,10 @@ package com.ptzstudio.android
 
 import android.content.Context
 import android.hardware.input.InputManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
@@ -21,6 +25,7 @@ import com.ptzstudio.android.core.PadButton
 import com.ptzstudio.android.core.PadState
 import com.ptzstudio.android.core.PtzController
 import com.ptzstudio.android.core.SettingsCodec
+import com.ptzstudio.android.core.Transport
 import com.ptzstudio.android.core.ViscaCommands
 import com.ptzstudio.android.core.ViscaReplies
 import com.ptzstudio.android.core.ViscaUdpClient
@@ -34,6 +39,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
+import java.net.DatagramSocket
 import java.util.concurrent.TimeUnit
 import kotlin.math.hypot
 import kotlin.math.max
@@ -60,7 +66,7 @@ class Engine(private val context: Context) {
     private val prefs = context.getSharedPreferences("ptz_studio", Context.MODE_PRIVATE)
     private val main = Handler(Looper.getMainLooper())
 
-    private val _settings = MutableStateFlow(SettingsCodec.fromJson(prefs.getString(KEY_SETTINGS, null)))
+    private val _settings = MutableStateFlow(loadSettings())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
     private val _link = MutableStateFlow(LinkState.NO_CAMERA)
@@ -91,12 +97,14 @@ class Engine(private val context: Context) {
     val zoomLevel: StateFlow<Double?> = _zoomLevel.asStateFlow()
 
     @Volatile private var rawZoom: Int? = null
-    @Volatile private var lastZoomReplyAt = 0L
     @Volatile private var lastZoomPollMs = 0L
     @Volatile private var zoomFastUntil = 0L
     private var prevSentZoom = 0
 
-    private val client = ViscaUdpClient { data ->
+    /** Rede Wi-Fi atual. Os sockets são presos a ela para os comandos não saírem pelos dados móveis. */
+    @Volatile private var wifiNetwork: Network? = null
+
+    private val client = ViscaUdpClient(prepareSocket = ::bindToWifi) { data ->
         lastReplyAt = SystemClock.elapsedRealtime()
         ViscaReplies.zoomPosition(data)?.let { onZoomPosition(it) }
     }
@@ -113,6 +121,11 @@ class Engine(private val context: Context) {
     private var keyLt = 0.0
     private var keyRt = 0.0
     private var axisState = PadState()
+    /** Cópia dos analógicos/gatilhos para o ciclo (outra thread) checar se o controle parou de mandar sinal. */
+    @Volatile private var analogSnapshot = PadState()
+    @Volatile private var lastGamepadEventMs = 0L
+    /** Controle que está comandando (com dois controles ligados, um não atrapalha o outro). */
+    private var activeDeviceId: Int? = null
 
     /** Na tela de mapeamento o controle não mexe a câmera; os botões só são mostrados no desenho. */
     @Volatile var mappingMode = false
@@ -132,11 +145,63 @@ class Engine(private val context: Context) {
             override fun onInputDeviceAdded(deviceId: Int) = refreshGamepad()
             override fun onInputDeviceRemoved(deviceId: Int) {
                 refreshGamepad()
-                clearPad()
+                if (activeDeviceId == null || activeDeviceId == deviceId) {
+                    // O controle que estava comandando sumiu: para tudo até as entradas voltarem ao neutro.
+                    clearPad()
+                    controller.safetyStop(SystemClock.elapsedRealtime())
+                }
             }
             override fun onInputDeviceChanged(deviceId: Int) = refreshGamepad()
         }, main)
         refreshGamepad()
+        watchWifi()
+    }
+
+    // ---------------- Rede Wi-Fi ----------------
+
+    private fun loadSettings(): AppSettings {
+        val text = prefs.getString(KEY_SETTINGS, null)
+        val parsed = SettingsCodec.tryParse(text)
+        if (parsed == null) {
+            // Arquivo estragado: guarda uma cópia antes que a próxima mudança grave por cima.
+            prefs.edit().putString(KEY_SETTINGS_BACKUP, text).apply()
+            return AppSettings()
+        }
+        return parsed
+    }
+
+    private fun bindToWifi(s: DatagramSocket) {
+        wifiNetwork?.bindSocket(s)
+    }
+
+    /**
+     * Acompanha a rede Wi-Fi (mesmo sem internet). Quando ela aparece ou muda, a câmera é reconectada
+     * por ela; isso também manda a parada de novo quando o Wi-Fi volta.
+     */
+    private fun watchWifi() {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        try {
+            cm.registerNetworkCallback(request, object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    main.post {
+                        if (wifiNetwork != network) {
+                            wifiNetwork = network
+                            applyCamera(reconnect = true)
+                        }
+                    }
+                }
+
+                override fun onLost(network: Network) {
+                    main.post { if (wifiNetwork == network) wifiNetwork = null }
+                }
+            }, main)
+        } catch (_: Exception) {
+            // Sem acesso ao estado da rede: segue sem prender ao Wi-Fi.
+        }
     }
 
     // ---------------- Ciclo ----------------
@@ -148,6 +213,7 @@ class Engine(private val context: Context) {
             lastTickNs = nowNs
             val nowMs = SystemClock.elapsedRealtime()
             controller.tick(dt, nowMs)
+            checkInputWatchdog(nowMs)
             pollZoom(nowMs)
             if (foreground && nowMs - lastHealthMs >= HEALTH_INTERVAL_MS) {
                 lastHealthMs = nowMs
@@ -165,10 +231,43 @@ class Engine(private val context: Context) {
             return
         }
         client.send(ViscaCommands.versionInquiry(cam.viscaAddress))
-        _link.value = when {
+        val old = _link.value
+        val now = when {
             nowMs - lastReplyAt < REPLY_WINDOW_MS -> LinkState.ONLINE
             nowMs - connectedAt < REPLY_WINDOW_MS -> LinkState.CONNECTING
             else -> LinkState.NO_REPLY
+        }
+        if (now == LinkState.NO_REPLY) {
+            if (old != LinkState.NO_REPLY && controller.isMoving) {
+                // Como no Windows: câmera sem resposta durante um movimento = parada de segurança.
+                controller.safetyStop(nowMs)
+                say("Câmera sem resposta: movimento parado")
+            }
+            // VISCA over IP: se a câmera reiniciou, ela espera a sequência zerada.
+            if (cam.transport == Transport.VISCA_OVER_IP) client.resetSequence()
+        }
+        if (now == LinkState.ONLINE && old == LinkState.NO_REPLY) {
+            // A câmera voltou: a parada pode ter se perdido durante a queda. Reenvia se nada estiver em uso.
+            controller.resendStopIfIdle(nowMs)
+        }
+        _link.value = now
+    }
+
+    /**
+     * Segurança para controle Bluetooth que trava sem se desconectar: se um analógico ou gatilho está fora do
+     * centro e o controle não manda nenhum sinal por [INPUT_WATCHDOG_MS], a câmera para.
+     */
+    private fun checkInputWatchdog(nowMs: Long) {
+        if (!_settings.value.motion.inputWatchdogEnabled) return
+        val a = analogSnapshot
+        val dz = _settings.value.motion.deadzonePercent / 100.0
+        val held = hypot(a.lsX, a.lsY) > dz || hypot(a.rsX, a.rsY) > dz || a.lt > 0.05 || a.rt > 0.05
+        if (held && lastGamepadEventMs != 0L && nowMs - lastGamepadEventMs > INPUT_WATCHDOG_MS) {
+            lastGamepadEventMs = nowMs
+            analogSnapshot = PadState()
+            controller.safetyStop(nowMs)
+            main.post { clearPad() }
+            say("Controle sem sinal: câmera parada")
         }
     }
 
@@ -187,22 +286,13 @@ class Engine(private val context: Context) {
             lastZoomPollMs = nowMs
             client.send(ViscaCommands.zoomPositionInquiry(cam.viscaAddress))
         }
-        if (lastZoomReplyAt != 0L && nowMs - lastZoomReplyAt > ZOOM_STALE_MS) {
-            lastZoomReplyAt = 0L
-            rawZoom = null
-            controller.zoomLevel = null
-            _zoomLevel.value = null
-        }
+        // Se a câmera parar de informar, vale a última posição conhecida (não volta à velocidade cheia de repente).
     }
 
     private fun onZoomPosition(pos: Int) {
-        lastZoomReplyAt = SystemClock.elapsedRealtime()
         rawZoom = pos
+        // O máximo só muda pelo botão Calibrar (um valor estranho da câmera não estraga a redução).
         val max = _settings.value.motion.zoomMaxPosition.coerceAtLeast(1)
-        if (pos > max) {
-            // A câmera foi além do máximo conhecido: aprende o novo máximo.
-            main.post { val m = _settings.value.motion; if (pos > m.zoomMaxPosition) setMotion(m.copy(zoomMaxPosition = pos)) }
-        }
         val level = (pos.toDouble() / max).coerceIn(0.0, 1.0)
         controller.zoomLevel = level
         _zoomLevel.value = level
@@ -228,18 +318,21 @@ class Engine(private val context: Context) {
             _link.value = LinkState.NO_CAMERA
             return
         }
-        controller.limits = cam.limits
         if (reconnect) {
+            // A parada sai para a câmera antiga, com o endereço dela, antes de trocar.
             controller.stopNow(SystemClock.elapsedRealtime())
+            controller.limits = cam.limits
             client.connect(cam.ip, cam.port, cam.transport)
             connectedAt = SystemClock.elapsedRealtime()
             lastReplyAt = 0L
             lastHealthMs = 0L
-            lastZoomReplyAt = 0L
+            lastZoomPollMs = 0L
             rawZoom = null
             controller.zoomLevel = null
             _zoomLevel.value = null
             _link.value = LinkState.CONNECTING
+        } else {
+            controller.limits = cam.limits
         }
     }
 
@@ -251,11 +344,26 @@ class Engine(private val context: Context) {
         refreshGamepad()
     }
 
-    /** App saiu da tela: o Android não entrega mais o controle, então tudo para. */
+    /** App saiu da tela: o Android não entrega mais o controle, então tudo para (e só volta a mover depois de soltar). */
     fun onBackground() {
         foreground = false
         clearPad()
-        controller.releaseAll()
+        controller.safetyStop(SystemClock.elapsedRealtime())
+    }
+
+    /**
+     * A janela do app perdeu o foco (cortina de notificações, aviso do sistema, tela dividida, janelas do app):
+     * o "soltou" do controle iria para a outra janela, então para agora.
+     */
+    fun onFocusLost() {
+        clearPad()
+        controller.safetyStop(SystemClock.elapsedRealtime())
+    }
+
+    /** Usado quando o app vai fechar por erro: manda a parada e espera ela sair. */
+    fun emergencyStop() {
+        controller.stopNow(SystemClock.elapsedRealtime())
+        client.flush(300)
     }
 
     // ---------------- Configurações ----------------
@@ -322,6 +430,7 @@ class Engine(private val context: Context) {
 
     fun recallPreset(n: Int) {
         controller.sendOnce(ViscaCommands.presetRecall(address, n))
+        controller.latchUntilNeutral()
         zoomFastUntil = SystemClock.elapsedRealtime() + 8000
         say("${presetName(n)}")
     }
@@ -333,6 +442,7 @@ class Engine(private val context: Context) {
 
     fun home() {
         controller.sendOnce(ViscaCommands.home(address))
+        controller.latchUntilNeutral()
         zoomFastUntil = SystemClock.elapsedRealtime() + 8000
         say("Home")
     }
@@ -383,7 +493,7 @@ class Engine(private val context: Context) {
     // ---------------- Câmeras na rede ----------------
 
     suspend fun probe(cam: CameraConfig): Boolean = withContext(Dispatchers.IO) {
-        CameraProbe.isAlive(cam.ip, cam.port, cam.transport, cam.viscaAddress, 1200)
+        CameraProbe.isAlive(cam.ip, cam.port, cam.transport, cam.viscaAddress, 1200, ::bindToWifi)
     }
 
     suspend fun discover(): List<FoundCamera> = withContext(Dispatchers.IO) {
@@ -391,7 +501,7 @@ class Engine(private val context: Context) {
         val lock = wifi?.createMulticastLock("ptz-descoberta")?.apply { setReferenceCounted(false) }
         try {
             lock?.acquire()
-            WsDiscovery.discover(3000)
+            WsDiscovery.discover(3000, ::bindToWifi)
         } catch (_: Exception) {
             emptyList()
         } finally {
@@ -428,8 +538,30 @@ class Engine(private val context: Context) {
 
     private fun clearPad() {
         keysDown.clear(); hatDown.clear(); keyLt = 0.0; keyRt = 0.0; axisState = PadState()
+        analogSnapshot = PadState()
+        activeDeviceId = null
         mapping.reset()
         pushPad()
+    }
+
+    /** O controle informa a pressão dos gatilhos como eixo (aí o "botão" L2/R2 é ignorado). */
+    private fun hasAnalogTriggers(dev: InputDevice?): Boolean {
+        if (dev == null) return false
+        return listOf(MotionEvent.AXIS_LTRIGGER, MotionEvent.AXIS_BRAKE, MotionEvent.AXIS_RTRIGGER, MotionEvent.AXIS_GAS)
+            .any { dev.getMotionRange(it) != null }
+    }
+
+    private fun padIsNeutral(): Boolean =
+        keysDown.isEmpty() && hatDown.isEmpty() && keyLt == 0.0 && keyRt == 0.0 &&
+            hypot(axisState.lsX, axisState.lsY) < 0.2 && hypot(axisState.rsX, axisState.rsY) < 0.2 &&
+            axisState.lt < 0.1 && axisState.rt < 0.1
+
+    /** Com dois controles ligados, só um comanda por vez (o outro é ignorado enquanto o primeiro está em uso). */
+    private fun acceptDevice(id: Int): Boolean {
+        val cur = activeDeviceId
+        if (cur != null && cur != id && !padIsNeutral()) return false
+        activeDeviceId = id
+        return true
     }
 
     /** Recebe teclas da Activity. Devolve true se era do controle (e foi tratada). */
@@ -438,15 +570,20 @@ class Engine(private val context: Context) {
         val down = e.action == KeyEvent.ACTION_DOWN
         if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return true
         if (down && e.repeatCount > 0) return true
+        if (!acceptDevice(e.deviceId)) return true
+        lastGamepadEventMs = SystemClock.elapsedRealtime()
         val learned = _settings.value.learnedKeys[e.keyCode]
         val button = learned ?: keyToButton(e.keyCode)
         if (button == null) {
             if (down) detectListener?.let { l -> l(DetectEvent.UnknownKey(e.keyCode)) }
             return true
         }
+        val analogTriggers = hasAnalogTriggers(e.device)
         when (button) {
-            PadButton.LT -> keyLt = if (down) 1.0 else 0.0
-            PadButton.RT -> keyRt = if (down) 1.0 else 0.0
+            // Se o controle manda a pressão do gatilho como eixo, o "botão" L2/R2 não pode passar por cima dela
+            // (senão um toque leve viraria zoom no máximo).
+            PadButton.LT -> if (!analogTriggers) keyLt = if (down) 1.0 else 0.0
+            PadButton.RT -> if (!analogTriggers) keyRt = if (down) 1.0 else 0.0
             else -> if (down) keysDown += button else keysDown -= button
         }
         pushPad()
@@ -457,18 +594,34 @@ class Engine(private val context: Context) {
     fun onMotionEvent(e: MotionEvent): Boolean {
         if (!isGamepad(e.device)) return false
         if (e.action != MotionEvent.ACTION_MOVE) return true
+        if (!acceptDevice(e.deviceId)) return true
+        lastGamepadEventMs = SystemClock.elapsedRealtime()
         val dev = e.device
         fun axis(a: Int): Double = e.getAxisValue(a).toDouble()
         fun has(a: Int): Boolean = dev?.getMotionRange(a, e.source) != null
+        // Gatilho num eixo que vai de -1 a 1 (repouso em -1) vira 0..1.
+        fun trigger(a: Int): Double {
+            val r = dev?.getMotionRange(a, e.source) ?: return 0.0
+            val v = axis(a)
+            return if (r.min < -0.5f) (v - r.min) / (r.max - r.min) else v
+        }
+        val dedicatedTriggers = has(MotionEvent.AXIS_LTRIGGER) || has(MotionEvent.AXIS_BRAKE) ||
+            has(MotionEvent.AXIS_RTRIGGER) || has(MotionEvent.AXIS_GAS)
         val rx: Double
         val ry: Double
-        if (has(MotionEvent.AXIS_RZ) || !has(MotionEvent.AXIS_RX)) {
+        val lt: Double
+        val rt: Double
+        if (dedicatedTriggers || !has(MotionEvent.AXIS_RX)) {
+            // Padrão Xbox/Android (GameSir): analógico direito em Z/RZ, gatilhos em eixos próprios.
             rx = axis(MotionEvent.AXIS_Z); ry = -axis(MotionEvent.AXIS_RZ)
+            lt = max(axis(MotionEvent.AXIS_LTRIGGER), axis(MotionEvent.AXIS_BRAKE))
+            rt = max(axis(MotionEvent.AXIS_RTRIGGER), axis(MotionEvent.AXIS_GAS))
         } else {
+            // Sem eixos próprios de gatilho: analógico direito em RX/RY e gatilhos em Z/RZ.
             rx = axis(MotionEvent.AXIS_RX); ry = -axis(MotionEvent.AXIS_RY)
+            lt = if (has(MotionEvent.AXIS_Z)) trigger(MotionEvent.AXIS_Z) else 0.0
+            rt = if (has(MotionEvent.AXIS_RZ)) trigger(MotionEvent.AXIS_RZ) else 0.0
         }
-        val lt = max(axis(MotionEvent.AXIS_LTRIGGER), axis(MotionEvent.AXIS_BRAKE))
-        val rt = max(axis(MotionEvent.AXIS_RTRIGGER), axis(MotionEvent.AXIS_GAS))
         axisState = PadState(
             lsX = axis(MotionEvent.AXIS_X), lsY = -axis(MotionEvent.AXIS_Y),
             rsX = rx, rsY = ry, lt = lt.coerceIn(0.0, 1.0), rt = rt.coerceIn(0.0, 1.0),
@@ -480,6 +633,7 @@ class Engine(private val context: Context) {
         if (hx > 0.5) hatDown += PadButton.DPAD_RIGHT
         if (hy < -0.5) hatDown += PadButton.DPAD_UP
         if (hy > 0.5) hatDown += PadButton.DPAD_DOWN
+        analogSnapshot = axisState
         pushPad()
         return true
     }
@@ -537,9 +691,11 @@ class Engine(private val context: Context) {
 
     companion object {
         private const val KEY_SETTINGS = "settings"
+        private const val KEY_SETTINGS_BACKUP = "settings_corrompido"
         private const val HEALTH_INTERVAL_MS = 2000L
         private const val REPLY_WINDOW_MS = 5000L
-        private const val ZOOM_STALE_MS = 5000L
+        /** Analógico/gatilho fora do centro sem nenhum sinal do controle por este tempo = parada de segurança. */
+        const val INPUT_WATCHDOG_MS = 5000L
         const val DETECT_STICK = 0.8
         const val DETECT_TRIGGER = 0.6
     }

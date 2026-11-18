@@ -36,6 +36,8 @@ data class MotionConfig(
     val zoomSlowdownPercent: Int = 80,
     /** Valor que a câmera informa com o zoom todo aproximado (calibrável). */
     val zoomMaxPosition: Int = 16384,
+    /** Segurança: para a câmera se o analógico/gatilho ficar fora do centro e o controle parar de mandar sinal. */
+    val inputWatchdogEnabled: Boolean = true,
     val invertPan: Boolean = false,
     val invertTilt: Boolean = false,
     /** Trava de diagonal: abaixo deste ângulo o eixo secundário é ignorado (0 = desligada). */
@@ -137,7 +139,23 @@ class PtzController(private val sender: PacketSender) {
     private val zoomRepeat = StopRepeat()
     private val focusRepeat = StopRepeat()
 
+    /** Trava até o neutro: depois de uma parada de segurança ou de um preset, só volta a mover quando tudo for solto. */
+    private var latched = false
+
     private enum class Source { PHYSICAL, VIRTUAL }
+
+    /** Há algum comando de movimento sendo enviado agora? */
+    val isMoving: Boolean get() = synchronized(lock) { sentPan != 0 || sentTilt != 0 || sentZoom != 0 || sentFocus != 0 }
+
+    /** Há alguma entrada (controle ou tela) fora do neutro? */
+    val hasActiveInput: Boolean get() = synchronized(lock) { anyInputActive() }
+
+    private fun anyInputActive(): Boolean {
+        val dz = config.sanitized().deadzonePercent / 100.0
+        return hypot(physX, physY) > dz || hypot(virtX, virtY) > 0.02 ||
+            padPan != 0 || padTilt != 0 || screenPan != 0 || screenTilt != 0 ||
+            abs(analogZoom) > 0.05 || padZoom != 0 || screenZoom != 0 || padFocus != 0 || screenFocus != 0
+    }
 
     val lastSentPan: Int get() = synchronized(lock) { sentPan }
     val lastSentTilt: Int get() = synchronized(lock) { sentTilt }
@@ -191,6 +209,34 @@ class PtzController(private val sender: PacketSender) {
         ptRepeat.arm(); zoomRepeat.arm()
     }
 
+    /**
+     * Parada de segurança (app perdeu o foco, controle desconectado ou travado, câmera sem resposta):
+     * para tudo e só volta a mover depois que todas as entradas voltarem ao neutro.
+     */
+    fun safetyStop(nowMs: Long) = synchronized(lock) {
+        stopNow(nowMs)
+        latched = true
+    }
+
+    /**
+     * Depois de chamar um preset ou o Home: se algo ainda estiver inclinado/apertado, ignora até soltar,
+     * para o reenvio do movimento não cancelar a ida até o preset.
+     */
+    fun latchUntilNeutral() = synchronized(lock) {
+        if (anyInputActive()) latched = true
+    }
+
+    /** Reenvia a parada se nada estiver sendo comandado (ex.: a câmera voltou a responder depois de uma queda do Wi-Fi). */
+    fun resendStopIfIdle(nowMs: Long) = synchronized(lock) {
+        if (anyInputActive() && !latched) return@synchronized
+        val a = limits.address
+        sender.send(ViscaCommands.panTiltStop(a))
+        sender.send(ViscaCommands.zoom(a, 0))
+        pan.reset(); tilt.reset()
+        sentPan = 0; sentTilt = 0; sentZoom = 0
+        lastPtMs = nowMs; lastZoomMs = nowMs
+    }
+
     /** Comando único (preset, Home, autofoco, brilho). */
     fun sendOnce(packet: ByteArray) = sender.send(packet)
 
@@ -199,6 +245,17 @@ class PtzController(private val sender: PacketSender) {
         val cfg = config.sanitized()
         val lim = limits
         val dz = cfg.deadzonePercent / 100.0
+        if (latched) {
+            if (anyInputActive()) {
+                // Travado: mantém tudo parado (e reforça a parada) até soltar tudo.
+                pan.reset(); tilt.reset(); owner = null
+                applyPanTilt(lim, 0, 0, nowMs)
+                applyZoom(lim, 0, nowMs)
+                applyFocus(lim, 0, nowMs)
+                return@synchronized
+            }
+            latched = false
+        }
 
         // 1) Quem comanda o movimento: quem saiu do centro primeiro segura até voltar ao centro.
         val physActive = hypot(physX, physY) > dz

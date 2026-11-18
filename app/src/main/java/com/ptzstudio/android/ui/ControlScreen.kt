@@ -39,6 +39,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +48,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -105,14 +109,14 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
             if (landscape) {
                 // Tudo cabe na tela sem rolar: o joystick ocupa o espaço que sobra na coluna da direita.
                 val rightW = (boxW.value - 36f) / 2.15f
-                val stick = min(rightW - 90f, boxH.value - 24f - 120f).coerceIn(130f, 260f)
+                val stick = min(rightW - 2 * ZOOM_W - 20f, boxH.value - 24f - 46f - 16f - 16f - 8f).coerceIn(120f, 260f)
                 Row(
                     Modifier.fillMaxSize().padding(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Column(Modifier.weight(1.15f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         video(Modifier.fillMaxWidth().weight(1f))
-                        PresetRow(settings, engine, onEdit = { editPreset = it })
+                        PresetGrid(settings, engine, onEdit = { editPreset = it })
                         QuickButtons(engine)
                     }
                     Column(
@@ -130,8 +134,8 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
                     video(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 8.dp).fillMaxWidth().aspectRatio(16f / 9f))
                     BoxWithConstraints(Modifier.fillMaxWidth().weight(1f)) {
                         val availH = maxHeight.value
-                        // Altura fixa do resto: velocidades 64, zoom atual 16, presets 86, botões 40, espaços e margens.
-                        val stick = min(boxW.value - 24f - 78f - 12f, availH - 310f).coerceIn(140f, 300f)
+                        // Altura fixa do resto: velocidades 46, zoom atual 16, presets 86, botões 40, espaços e margens.
+                        val stick = min(boxW.value - 24f - 2 * ZOOM_W - 20f, availH - 250f).coerceIn(140f, 320f)
                         Column(
                             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -214,26 +218,33 @@ private fun VideoCard(engine: Engine, settings: AppSettings, modifier: Modifier,
     }
 }
 
+private const val ZOOM_W = 56f
+
+/** Joystick no centro (fácil de usar com uma mão), com Zoom − à esquerda e Zoom + à direita. */
 @Composable
 private fun JoystickAndZoom(engine: Engine, joystickSize: Dp) {
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        ZoomHold("−", "Zoom −", -1, engine, joystickSize)
         VirtualJoystick(engine, joystickSize)
-        Column(
-            Modifier.width(78.dp).height(joystickSize),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            SectionTitle("Zoom")
-            HoldButton("Zoom +", { engine.setScreenZoom(1) }, { engine.setScreenZoom(0) }, Modifier.fillMaxWidth().weight(1f)) {
-                Text("+", color = Palette.Text, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
-            }
-            HoldButton("Zoom −", { engine.setScreenZoom(-1) }, { engine.setScreenZoom(0) }, Modifier.fillMaxWidth().weight(1f)) {
-                Text("−", color = Palette.Text, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
-            }
+        ZoomHold("+", "Zoom +", 1, engine, joystickSize)
+    }
+}
+
+@Composable
+private fun ZoomHold(symbol: String, label: String, dir: Int, engine: Engine, joystickSize: Dp) {
+    HoldButton(
+        label,
+        { engine.setScreenZoom(dir) },
+        { engine.setScreenZoom(0) },
+        Modifier.width(ZOOM_W.dp).height(maxOf(joystickSize * 0.62f, 88.dp)),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(symbol, color = Palette.Text, fontSize = 26.sp, fontWeight = FontWeight.SemiBold)
+            Text("Zoom", color = Palette.Muted, fontSize = 10.sp)
         }
     }
 }
@@ -280,17 +291,21 @@ private fun VirtualJoystick(engine: Engine, size: Dp) {
                             knob = d
                             engine.setVirtualStick((d.x / travel).toDouble(), (-d.y / travel).toDouble())
                         }
-                        update(down.position)
-                        down.consume()
-                        while (true) {
-                            val ev = awaitPointerEvent()
-                            val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                            if (!ch.pressed) break
-                            update(ch.position)
-                            ch.consume()
+                        try {
+                            update(down.position)
+                            down.consume()
+                            while (true) {
+                                val ev = awaitPointerEvent()
+                                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!ch.pressed) break
+                                update(ch.position)
+                                ch.consume()
+                            }
+                        } finally {
+                            // Sempre solta, mesmo se o gesto for cancelado no meio (outro dedo, troca de tela...).
+                            knob = Offset.Zero
+                            engine.setVirtualStick(0.0, 0.0)
                         }
-                        knob = Offset.Zero
-                        engine.setVirtualStick(0.0, 0.0)
                     } else if (r0 >= outer * (WEDGE_IN - 0.04f) && r0 <= outer * 1.05f) {
                         // Botão de direção (segurar)
                         var ang = Math.toDegrees(atan2(-d0.y.toDouble(), d0.x.toDouble()))
@@ -386,14 +401,51 @@ fun LevelSlider(label: String, value: Int, max: Int, modifier: Modifier, onChang
             Text(label, color = Palette.Muted, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f))
             Text("$value de $max", color = Palette.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
-        Slider(
-            value = value.toFloat(),
-            onValueChange = { onChange(it.roundToInt().coerceIn(1, max)) },
-            valueRange = 1f..max.toFloat(),
-            steps = (max - 2).coerceAtLeast(0),
-            modifier = Modifier.fillMaxWidth(),
-            colors = SliderDefaults.colors(thumbColor = Palette.AccentBright, activeTrackColor = Palette.AccentBright),
-        )
+        ThinSlider(value, max, Modifier.fillMaxWidth(), onChange)
+    }
+}
+
+/** Barra fina (menos altura que a barra padrão), de 1 até [max], de 1 em 1. Tocar ou arrastar. */
+@Composable
+fun ThinSlider(value: Int, max: Int, modifier: Modifier, onChange: (Int) -> Unit) {
+    val current by rememberUpdatedState(value)
+    val change by rememberUpdatedState(onChange)
+    val top = max.coerceAtLeast(2)
+    Canvas(
+        modifier
+            .height(28.dp)
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(current.toFloat(), 1f..top.toFloat(), (top - 2).coerceAtLeast(0))
+                setProgress { t -> change(t.roundToInt().coerceIn(1, top)); true }
+            }
+            .pointerInput(top) {
+                val r = 9.dp.toPx()
+                fun at(x: Float): Int {
+                    val f = ((x - r) / (this.size.width - 2 * r)).coerceIn(0f, 1f)
+                    return (1 + f * (top - 1)).roundToInt().coerceIn(1, top)
+                }
+                awaitEachGesture {
+                    val d = awaitFirstDown()
+                    change(at(d.position.x))
+                    d.consume()
+                    while (true) {
+                        val ev = awaitPointerEvent()
+                        val c = ev.changes.firstOrNull { it.id == d.id } ?: break
+                        if (!c.pressed) break
+                        change(at(c.position.x))
+                        c.consume()
+                    }
+                }
+            },
+    ) {
+        val r = 9.dp.toPx()
+        val y = this.size.height / 2f
+        val left = r
+        val right = this.size.width - r
+        val x = left + (right - left) * ((current - 1f) / (top - 1f)).coerceIn(0f, 1f)
+        drawLine(Color(0xFF3A4250), Offset(left, y), Offset(right, y), 4.dp.toPx(), cap = StrokeCap.Round)
+        drawLine(Palette.AccentBright, Offset(left, y), Offset(x, y), 4.dp.toPx(), cap = StrokeCap.Round)
+        drawCircle(Palette.AccentBright, r, Offset(x, y))
     }
 }
 

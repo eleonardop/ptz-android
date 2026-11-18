@@ -285,4 +285,54 @@ class ControllerTest {
         assertEquals(13, lastPanTilt().panSpeed())
         assertEquals(3, sent.last { it.isZoom() }.zoomSpeed())
     }
+
+    @Test
+    fun paradaDeSeguranca_soVoltaAMoverDepoisDeSoltar() {
+        c.config = MotionConfig(rampPercent = 0)
+        c.setPhysicalStick(1.0, 0.0)
+        tick(5)
+        assertTrue(lastPanTilt().panSpeed() > 0)
+        c.safetyStop(now)
+        tick(20)
+        assertEquals("continua parado com o analógico ainda inclinado", 0, c.lastSentPan)
+        c.setPhysicalStick(0.0, 0.0)
+        tick(2)
+        c.setPhysicalStick(1.0, 0.0)
+        tick(5)
+        assertTrue("depois de soltar, volta a mover", c.lastSentPan > 0)
+    }
+
+    @Test
+    fun preset_travaAteSoltar() {
+        c.config = MotionConfig(rampPercent = 0)
+        c.setPhysicalStick(0.0, 1.0)
+        tick(5)
+        c.latchUntilNeutral()
+        val antes = sent.size
+        tick(50)
+        assertTrue("nenhum movimento reenviado sobre o preset", sent.drop(antes).none { it.isPanTilt() && !it.isStop() })
+        c.setPhysicalStick(0.0, 0.0); tick(2)
+        c.setPhysicalStick(0.0, 1.0); tick(3)
+        assertTrue(c.lastSentTilt > 0)
+    }
+
+    @Test
+    fun preset_semNadaApertado_naoTrava() {
+        c.config = MotionConfig(rampPercent = 0)
+        c.latchUntilNeutral()
+        c.setPhysicalStick(1.0, 0.0)
+        tick(3)
+        assertTrue(c.lastSentPan > 0)
+    }
+
+    @Test
+    fun cameraVoltou_reenviaParadaSeNadaApertado() {
+        c.resendStopIfIdle(now)
+        assertTrue(sent.any { it.isStop() })
+        assertTrue(sent.any { it.isZoom() && it.zoomSpeed() == 0 })
+        sent.clear()
+        c.setPhysicalStick(1.0, 0.0)
+        c.resendStopIfIdle(now)
+        assertTrue("com o controle em uso não interfere", sent.isEmpty())
+    }
 }

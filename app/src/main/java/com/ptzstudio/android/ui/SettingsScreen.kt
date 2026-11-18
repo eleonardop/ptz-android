@@ -60,6 +60,11 @@ fun SettingsScreen(engine: Engine, onBack: () -> Unit, onMapping: () -> Unit) {
                 }
                 Hint("Conecte o GameSir pelo Bluetooth do celular (modo Android/Xbox) ou por cabo USB-C.")
                 PadTile("Mapear botões do controle", Modifier.fillMaxWidth(), onClick = onMapping)
+                SwitchRow("Segurança: parar se o controle parar de mandar sinal", m.inputWatchdogEnabled) { set(m.copy(inputWatchdogEnabled = it)) }
+                Hint(
+                    "Se um analógico ou gatilho estiver fora do centro e o controle ficar 5 s sem mandar nenhum sinal " +
+                        "(Bluetooth travado), a câmera para. Se ela parar sozinha em movimentos longos e lentos, desligue.",
+                )
             }
 
             SectionTitle("Movimento")

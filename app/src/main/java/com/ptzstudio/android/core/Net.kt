@@ -14,7 +14,11 @@ import java.util.concurrent.atomic.AtomicLong
  * Cliente VISCA por UDP. Os envios saem em ordem por uma única thread; uma segunda thread
  * escuta as respostas só para saber se a câmera está respondendo.
  */
-class ViscaUdpClient(private val onReply: (ByteArray) -> Unit = {}) : PacketSender {
+class ViscaUdpClient(
+    /** Prepara cada socket novo antes do uso (no app: prende o socket à rede Wi-Fi). */
+    private val prepareSocket: (DatagramSocket) -> Unit = {},
+    private val onReply: (ByteArray) -> Unit = {},
+) : PacketSender {
     private val sendExecutor: ExecutorService = Executors.newSingleThreadExecutor { r ->
         Thread(r, "visca-envio").apply { isDaemon = true }
     }
@@ -32,6 +36,7 @@ class ViscaUdpClient(private val onReply: (ByteArray) -> Unit = {}) : PacketSend
             val gen = generation
             try {
                 val s = DatagramSocket()
+                try { prepareSocket(s) } catch (_: Exception) {}
                 socket = s
                 target = InetSocketAddress(InetAddress.getByName(ip.trim()), port)
                 this.transport = transport
@@ -40,6 +45,16 @@ class ViscaUdpClient(private val onReply: (ByteArray) -> Unit = {}) : PacketSend
                 if (transport == Transport.VISCA_OVER_IP) rawSend(ViscaFraming.resetSequence())
             } catch (_: Exception) {
                 target = null
+            }
+        }
+    }
+
+    /** VISCA over IP: pede à câmera para zerar a sequência (ex.: depois que ela reiniciou). */
+    fun resetSequence() {
+        sendExecutor.execute {
+            if (transport == Transport.VISCA_OVER_IP) {
+                sequence.set(0)
+                rawSend(ViscaFraming.resetSequence())
             }
         }
     }
@@ -98,9 +113,17 @@ class ViscaUdpClient(private val onReply: (ByteArray) -> Unit = {}) : PacketSend
 
 /** Pergunta a uma câmera se ela responde (consulta de versão VISCA). */
 object CameraProbe {
-    fun isAlive(ip: String, port: Int, transport: Transport, address: Int = 1, timeoutMs: Int = 1200): Boolean {
+    fun isAlive(
+        ip: String,
+        port: Int,
+        transport: Transport,
+        address: Int = 1,
+        timeoutMs: Int = 1200,
+        prepareSocket: (DatagramSocket) -> Unit = {},
+    ): Boolean {
         return try {
             DatagramSocket().use { s ->
+                try { prepareSocket(s) } catch (_: Exception) {}
                 s.soTimeout = timeoutMs
                 val addr = InetSocketAddress(InetAddress.getByName(ip.trim()), port)
                 val inquiry = ViscaCommands.versionInquiry(address)
@@ -171,10 +194,11 @@ object WsDiscovery {
     }
 
     /** Envia a pergunta e junta as respostas por [timeoutMs]. Bloqueia: chamar fora da thread principal. */
-    fun discover(timeoutMs: Int = 3000): List<FoundCamera> {
+    fun discover(timeoutMs: Int = 3000, prepareSocket: (DatagramSocket) -> Unit = {}): List<FoundCamera> {
         val found = LinkedHashMap<String, FoundCamera>()
         try {
             DatagramSocket().use { s ->
+                try { prepareSocket(s) } catch (_: Exception) {}
                 s.soTimeout = 400
                 s.broadcast = true
                 val msg = probeMessage().toByteArray(Charsets.UTF_8)
