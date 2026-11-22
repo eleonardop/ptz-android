@@ -142,7 +142,6 @@ class Engine(private val context: Context) {
     @Volatile private var detectListener: ((DetectEvent) -> Unit)? = null
 
     init {
-        main.postDelayed(padKeepAlive, PAD_KEEPALIVE_MS)
         applyCamera(reconnect = true)
         controller.config = _settings.value.motion
         loop.scheduleAtFixedRate({ safeTick() }, 0, 20, TimeUnit.MILLISECONDS)
@@ -344,7 +343,13 @@ class Engine(private val context: Context) {
 
     // ---------------- Ciclo de vida ----------------
 
+    @Volatile private var keepAliveStarted = false
+
     fun onForeground() {
+        if (!keepAliveStarted) {
+            keepAliveStarted = true
+            main.postDelayed(padKeepAlive, PAD_KEEPALIVE_MS)
+        }
         foreground = true
         lastHealthMs = 0L
         refreshGamepad()
