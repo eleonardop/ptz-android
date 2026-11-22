@@ -48,6 +48,15 @@ fun SettingsScreen(engine: Engine, onBack: () -> Unit, onMapping: () -> Unit) {
                 Hint("O endereço RTSP fica no cadastro de cada câmera (Câmeras › Editar).")
             }
 
+            SectionTitle("Manter o controle ligado")
+            Panel(Modifier.fillMaxWidth()) {
+                val pulse by engine.padPulse.collectAsState()
+                SwitchRow("Sinal de vibração zero a cada 3 minutos", settings.keepPadAwake) { on -> engine.update { it.copy(keepPadAwake = on) } }
+                Hint("O controle recebe um sinal sem vibrar de verdade, para não desligar sozinho por falta de uso durante o culto.")
+                pulse?.let { Text("Último sinal: $it", color = Palette.Soft, fontSize = 13.sp) }
+                PadTile("Testar agora", Modifier.fillMaxWidth()) { engine.pulsePads() }
+            }
+
             SectionTitle("Brilho")
             Panel(Modifier.fillMaxWidth()) {
                 SwitchRow("Usar o modo Brilho da câmera", settings.brightMode) { engine.setBrightMode(it) }

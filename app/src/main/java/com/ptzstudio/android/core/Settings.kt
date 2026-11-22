@@ -30,6 +30,8 @@ data class AppSettings(
     val videoEnabled: Boolean = true,
     /** Brilho pelo modo "Brilho" da câmera (para câmeras que ignoram a compensação de exposição). */
     val brightMode: Boolean = false,
+    /** Manda um sinal de vibração zero ao controle a cada 3 minutos, para ele não desligar sozinho. */
+    val keepPadAwake: Boolean = true,
 ) {
     val selectedCamera: CameraConfig?
         get() = cameras.firstOrNull { it.id == selectedCameraId } ?: cameras.firstOrNull()
@@ -81,6 +83,7 @@ object SettingsCodec {
         o.put("learnedKeys", JSONObject().apply { s.learnedKeys.forEach { (k, b) -> put(k.toString(), b.name) } })
         o.put("videoEnabled", s.videoEnabled)
         o.put("brightMode", s.brightMode)
+        o.put("keepPadAwake", s.keepPadAwake)
         return o.toString()
     }
 
@@ -158,6 +161,7 @@ object SettingsCodec {
                 // Até a versão 1 o vídeo vinha desligado por padrão: quem atualiza passa a ter o vídeo ligado.
                 videoEnabled = if (o.optInt("version", 1) < 2) true else o.optBoolean("videoEnabled", true),
                 brightMode = o.optBoolean("brightMode", false),
+                keepPadAwake = o.optBoolean("keepPadAwake", true),
             )
         } catch (_: Exception) {
             null

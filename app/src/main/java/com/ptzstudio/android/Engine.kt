@@ -7,7 +7,9 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Handler
+import android.os.VibrationEffect
 import android.os.Looper
 import android.os.SystemClock
 import android.view.InputDevice
@@ -140,6 +142,7 @@ class Engine(private val context: Context) {
     @Volatile private var detectListener: ((DetectEvent) -> Unit)? = null
 
     init {
+        main.postDelayed(padKeepAlive, PAD_KEEPALIVE_MS)
         applyCamera(reconnect = true)
         controller.config = _settings.value.motion
         loop.scheduleAtFixedRate({ safeTick() }, 0, 20, TimeUnit.MILLISECONDS)
@@ -576,6 +579,53 @@ class Engine(private val context: Context) {
             (s and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
     }
 
+    private val _padPulse = MutableStateFlow<String?>(null)
+    /** Resultado do último sinal para manter o controle ligado (para mostrar em Ajustes). */
+    val padPulse: StateFlow<String?> = _padPulse.asStateFlow()
+
+    /** A cada 3 minutos manda um sinal de vibração zero ao controle, para ele não desligar sozinho por inatividade. */
+    private val padKeepAlive = object : Runnable {
+        override fun run() {
+            if (_settings.value.keepPadAwake) pulsePads()
+            main.postDelayed(this, PAD_KEEPALIVE_MS)
+        }
+    }
+
+    /** Vibração de intensidade zero (não se sente), só para o controle receber um sinal. Devolve quantos controles aceitaram. */
+    fun pulsePads(): Int {
+        val effect = VibrationEffect.createWaveform(longArrayOf(0, 40), intArrayOf(0, 0), -1)
+        var sent = 0
+        var pads = 0
+        for (id in InputDevice.getDeviceIds()) {
+            val d = InputDevice.getDevice(id) ?: continue
+            if (!isGamepad(d)) continue
+            pads++
+            try {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    val vm = d.vibratorManager
+                    val ids = vm.vibratorIds
+                    for (v in ids) vm.getVibrator(v).vibrate(effect)
+                    if (ids.isNotEmpty()) sent++
+                } else {
+                    @Suppress("DEPRECATION")
+                    val v = d.vibrator
+                    if (v.hasVibrator()) {
+                        v.vibrate(effect)
+                        sent++
+                    }
+                }
+            } catch (_: Exception) {
+            }
+        }
+        val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date())
+        _padPulse.value = when {
+            pads == 0 -> "Nenhum controle conectado ($time)"
+            sent == 0 -> "O Android não oferece vibração para este controle: o sinal não pôde ser enviado ($time)"
+            else -> "Sinal enviado às $time"
+        }
+        return sent
+    }
+
     private fun refreshGamepad() {
         val name = InputDevice.getDeviceIds().toList()
             .mapNotNull { InputDevice.getDevice(it) }
@@ -739,6 +789,7 @@ class Engine(private val context: Context) {
 
     companion object {
         private const val KEY_SETTINGS = "settings"
+        private const val PAD_KEEPALIVE_MS = 3 * 60_000L
         private const val KEY_SETTINGS_BACKUP = "settings_corrompido"
         private const val HEALTH_INTERVAL_MS = 2000L
         private const val REPLY_WINDOW_MS = 5000L
