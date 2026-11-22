@@ -28,6 +28,8 @@ data class AppSettings(
     val learnedKeys: Map<Int, PadButton> = emptyMap(),
     /** Vídeo ao vivo ligado por padrão. */
     val videoEnabled: Boolean = true,
+    /** Brilho pelo modo "Brilho" da câmera (para câmeras que ignoram a compensação de exposição). */
+    val brightMode: Boolean = false,
 ) {
     val selectedCamera: CameraConfig?
         get() = cameras.firstOrNull { it.id == selectedCameraId } ?: cameras.firstOrNull()
@@ -78,6 +80,7 @@ object SettingsCodec {
         o.put("presetNames", JSONArray().apply { s.presetNames.forEach { put(it) } })
         o.put("learnedKeys", JSONObject().apply { s.learnedKeys.forEach { (k, b) -> put(k.toString(), b.name) } })
         o.put("videoEnabled", s.videoEnabled)
+        o.put("brightMode", s.brightMode)
         return o.toString()
     }
 
@@ -154,6 +157,7 @@ object SettingsCodec {
                 learnedKeys = learned,
                 // Até a versão 1 o vídeo vinha desligado por padrão: quem atualiza passa a ter o vídeo ligado.
                 videoEnabled = if (o.optInt("version", 1) < 2) true else o.optBoolean("videoEnabled", true),
+                brightMode = o.optBoolean("brightMode", false),
             )
         } catch (_: Exception) {
             null

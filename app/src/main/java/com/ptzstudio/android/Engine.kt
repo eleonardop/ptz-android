@@ -450,15 +450,44 @@ class Engine(private val context: Context) {
         say("Home")
     }
 
+    private val _autofocusOn = MutableStateFlow<Boolean?>(null)
+    /** Autofoco ligado (true), desligado/manual (false) ou ainda não usado (nulo). */
+    val autofocusOn: StateFlow<Boolean?> = _autofocusOn.asStateFlow()
+
+    /** Liga e desliga o autofoco a cada toque (desligado = o foco fica parado onde está). */
     fun autofocus() {
-        controller.sendOnce(ViscaCommands.autoFocus(address, true))
-        say("Autofoco ligado")
+        val on = _autofocusOn.value != true
+        controller.sendOnce(ViscaCommands.autoFocus(address, on))
+        _autofocusOn.value = on
+        say(if (on) "Autofoco ligado" else "Autofoco desligado (foco travado)")
     }
 
+    /** Nível da compensação de exposição mandado por último (0..14; 7 = normal). */
+    @Volatile private var expLevel = ViscaCommands.EXP_COMP_CENTER
+
+    /**
+     * Brilho. Padrão: compensação de exposição com o valor exato (algumas câmeras ignoram o "sobe/desce").
+     * Opção em Ajustes: modo "Brilho" da câmera, para as que não aceitam compensação.
+     */
     fun brightness(dir: Int) {
+        if (_settings.value.brightMode) {
+            controller.sendOnce(ViscaCommands.aeMode(address, bright = true))
+            controller.sendOnce(ViscaCommands.brightStep(address, dir))
+            say(if (dir > 0) "Brilho +" else "Brilho −")
+            return
+        }
+        expLevel = (expLevel + if (dir > 0) 1 else -1).coerceIn(0, ViscaCommands.EXP_COMP_MAX)
         controller.sendOnce(ViscaCommands.expCompPower(address, true))
-        controller.sendOnce(ViscaCommands.expCompStep(address, dir))
-        say(if (dir > 0) "Brilho +" else "Brilho −")
+        controller.sendOnce(ViscaCommands.expCompDirect(address, expLevel))
+        val v = expLevel - ViscaCommands.EXP_COMP_CENTER
+        say("Brilho ${if (v > 0) "+$v" else if (v < 0) "−${-v}" else "0 (normal)"}")
+    }
+
+    /** Troca o jeito do brilho. Ao voltar para o padrão, devolve a câmera à exposição automática. */
+    fun setBrightMode(on: Boolean) {
+        update { it.copy(brightMode = on) }
+        if (!on) controller.sendOnce(ViscaCommands.aeMode(address, bright = false))
+        expLevel = ViscaCommands.EXP_COMP_CENTER
     }
 
     fun stopCamera() = controller.stopNow(SystemClock.elapsedRealtime())

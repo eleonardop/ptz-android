@@ -97,3 +97,17 @@ class ViscaTest {
         assertTrue(m.zoomSlowdownFactor(0.3) > m.zoomSlowdownFactor(0.7))
     }
 }
+
+class ViscaBrilhoTest {
+    private fun hex(b: ByteArray) = b.joinToString(" ") { "%02X".format(it) }
+
+    @org.junit.Test
+    fun brilhoEAutofoco() {
+        org.junit.Assert.assertEquals("81 01 04 4E 00 00 00 09 FF", hex(ViscaCommands.expCompDirect(1, 9)))
+        org.junit.Assert.assertEquals("81 01 04 4E 00 00 00 0E FF", hex(ViscaCommands.expCompDirect(1, 99)))
+        org.junit.Assert.assertEquals("81 01 04 39 0D FF", hex(ViscaCommands.aeMode(1, true)))
+        org.junit.Assert.assertEquals("81 01 04 39 00 FF", hex(ViscaCommands.aeMode(1, false)))
+        org.junit.Assert.assertEquals("81 01 04 0D 03 FF", hex(ViscaCommands.brightStep(1, -1)))
+        org.junit.Assert.assertEquals("81 01 04 38 03 FF", hex(ViscaCommands.autoFocus(1, false)))
+    }
+}

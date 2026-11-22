@@ -480,7 +480,15 @@ private fun ZoomInfo(engine: Engine, settings: AppSettings) {
 @Composable
 private fun QuickButtons(engine: Engine) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        PadTile("Autofoco", Modifier.weight(1f), height = 40.dp) { engine.autofocus() }
+        val af by engine.autofocusOn.collectAsState()
+        PadTile(
+            when (af) {
+                true -> "AF ligado"
+                false -> "AF desligado"
+                null -> "Autofoco"
+            },
+            Modifier.weight(1f), height = 40.dp, selected = af == true,
+        ) { engine.autofocus() }
         PadTile("Brilho −", Modifier.weight(1f), height = 40.dp) { engine.brightness(-1) }
         PadTile("Brilho +", Modifier.weight(1f), height = 40.dp) { engine.brightness(1) }
         PadTile("Home", Modifier.weight(1f), height = 40.dp) { engine.home() }

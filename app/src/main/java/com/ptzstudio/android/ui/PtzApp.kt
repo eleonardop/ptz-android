@@ -7,9 +7,19 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,14 +37,19 @@ private enum class Screen { CONTROL, CAMERAS, SETTINGS, MAPPING }
 fun PtzApp(engine: Engine) {
     PtzTheme {
         var screen by rememberSaveable { mutableStateOf(Screen.CONTROL) }
-        val snackbar = remember { SnackbarHostState() }
-
+        // Aviso curto e pequeno no topo (não tapa os botões de baixo; some sozinho).
+        var toast by remember { mutableStateOf<String?>(null) }
+        var toastId by remember { mutableIntStateOf(0) }
         LaunchedEffect(Unit) {
             engine.messages.collect { msg ->
-                launch {
-                    snackbar.currentSnackbarData?.dismiss()
-                    snackbar.showSnackbar(msg)
-                }
+                toast = msg
+                toastId++
+            }
+        }
+        LaunchedEffect(toastId) {
+            if (toast != null) {
+                delay(1600)
+                toast = null
             }
         }
 
@@ -62,7 +77,16 @@ fun PtzApp(engine: Engine) {
                 )
                 Screen.MAPPING -> MappingScreen(engine, onBack = { screen = Screen.SETTINGS })
             }
-            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+            AnimatedVisibility(
+                toast != null, enter = fadeIn(), exit = fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 62.dp, start = 24.dp, end = 24.dp),
+            ) {
+                Text(
+                    toast.orEmpty(), color = Color.White, fontSize = 13.sp, maxLines = 2,
+                    modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0xE61E293B))
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                )
+            }
         }
     }
 }

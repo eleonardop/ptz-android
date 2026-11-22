@@ -104,6 +104,23 @@ object ViscaCommands {
         return bytes(header(address).toInt(), 0x01, 0x04, 0x0E, code, 0xFF)
     }
 
+    /** Compensação de exposição direta: nível 0..14 (7 = sem compensação). */
+    fun expCompDirect(address: Int, level: Int): ByteArray {
+        val v = level.coerceIn(0, EXP_COMP_MAX)
+        return bytes(header(address).toInt(), 0x01, 0x04, 0x4E, 0x00, 0x00, (v shr 4) and 0x0F, v and 0x0F, 0xFF)
+    }
+
+    /** Modo de exposição: automático completo (0x00) ou "Brilho" (0x0D), em que o brilho sobe e desce direto. */
+    fun aeMode(address: Int, bright: Boolean): ByteArray =
+        bytes(header(address).toInt(), 0x01, 0x04, 0x39, if (bright) 0x0D else 0x00, 0xFF)
+
+    /** No modo "Brilho": mais claro (dir > 0) ou mais escuro. */
+    fun brightStep(address: Int, dir: Int): ByteArray =
+        bytes(header(address).toInt(), 0x01, 0x04, 0x0D, if (dir > 0) 0x02 else 0x03, 0xFF)
+
+    const val EXP_COMP_MAX = 14
+    const val EXP_COMP_CENTER = 7
+
     private fun bytes(vararg v: Int): ByteArray = ByteArray(v.size) { v[it].toByte() }
 }
 

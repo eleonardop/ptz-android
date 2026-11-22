@@ -48,6 +48,16 @@ fun SettingsScreen(engine: Engine, onBack: () -> Unit, onMapping: () -> Unit) {
                 Hint("O endereço RTSP fica no cadastro de cada câmera (Câmeras › Editar).")
             }
 
+            SectionTitle("Brilho")
+            Panel(Modifier.fillMaxWidth()) {
+                SwitchRow("Usar o modo Brilho da câmera", settings.brightMode) { engine.setBrightMode(it) }
+                Hint(
+                    "Desligado (padrão): os botões de brilho mudam a compensação de exposição, mantendo a exposição automática. " +
+                        "Se o brilho não mudar na sua câmera, ligue esta opção: ela coloca a câmera no modo Brilho, em que a " +
+                        "claridade sobe e desce direto. Ao desligar, a câmera volta à exposição automática.",
+                )
+            }
+
             SectionTitle("Controle físico")
             Panel(Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
