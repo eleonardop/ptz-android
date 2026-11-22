@@ -157,7 +157,8 @@ object CameraProbe {
 }
 
 /** Câmera encontrada na rede pela descoberta ONVIF. */
-data class FoundCamera(val ip: String, val name: String)
+/** Câmera achada na rede. [xaddr] = endereço ONVIF dela; [rtspUrl] = vídeo descoberto (vazio = não achou). */
+data class FoundCamera(val ip: String, val name: String, val xaddr: String? = null, val rtspUrl: String = "")
 
 /** Descoberta ONVIF (WS-Discovery): pergunta na rede quem é câmera de vídeo. */
 object WsDiscovery {
@@ -190,7 +191,8 @@ object WsDiscovery {
             ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
             ?.takeIf { it.isNotBlank() }
         val name = scope("name") ?: scope("hardware") ?: "Câmera ONVIF"
-        return FoundCamera(ip, name)
+        val xaddr = xaddrs.split(Regex("\\s+")).firstOrNull { it.startsWith("http") && it.contains(ip) }
+        return FoundCamera(ip, name, xaddr)
     }
 
     /** Envia a pergunta e junta as respostas por [timeoutMs]. Bloqueia: chamar fora da thread principal. */

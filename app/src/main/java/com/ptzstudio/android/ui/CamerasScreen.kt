@@ -133,9 +133,13 @@ fun CamerasScreen(engine: Engine, onBack: () -> Unit) {
                     Column(Modifier.weight(1f)) {
                         Text(f.name, color = Palette.Text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                         Text(f.ip, color = Palette.Muted, fontSize = 12.sp)
+                        Text(
+                            if (f.rtspUrl.isNotBlank()) "Vídeo: ${f.rtspUrl}" else "Vídeo: não encontrado (dá para procurar ao adicionar)",
+                            color = if (f.rtspUrl.isNotBlank()) Palette.Soft else Palette.Muted, fontSize = 11.sp,
+                        )
                     }
                     PadTile("Adicionar", Modifier.width(100.dp), selected = true) {
-                        editing = CameraConfig(name = f.name, ip = f.ip)
+                        editing = CameraConfig(name = f.name, ip = f.ip, rtspUrl = f.rtspUrl)
                     }
                 }
             }
@@ -147,7 +151,7 @@ fun CamerasScreen(engine: Engine, onBack: () -> Unit) {
     }
 
     editing?.let { c ->
-        CameraEditDialog(c, onDismiss = { editing = null }) { saved ->
+        CameraEditDialog(c, onDismiss = { editing = null }, onFind = { engine.findRtsp(it) }) { saved ->
             engine.saveCamera(saved)
             editing = null
             scope.launch { online[saved.id] = engine.probe(saved) }
@@ -238,7 +242,15 @@ private fun Tag(text: String) {
 }
 
 @Composable
-private fun CameraEditDialog(initial: CameraConfig, onDismiss: () -> Unit, onSave: (CameraConfig) -> Unit) {
+private fun CameraEditDialog(
+    initial: CameraConfig,
+    onDismiss: () -> Unit,
+    onFind: suspend (String) -> String?,
+    onSave: (CameraConfig) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var finding by remember { mutableStateOf(false) }
+    var findResult by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf(initial.name) }
     var ip by remember { mutableStateOf(initial.ip) }
     var transport by remember { mutableStateOf(initial.transport) }
@@ -285,12 +297,31 @@ private fun CameraEditDialog(initial: CameraConfig, onDismiss: () -> Unit, onSav
                 }
                 OutlinedTextField(
                     rtsp, { rtsp = it.trim() }, label = { Text("Endereço RTSP do vídeo (opcional)") },
-                    placeholder = { Text("rtsp://192.168.4.163:554/2") }, singleLine = true,
+                    placeholder = { Text("rtsp://192.168.4.163:554/live/av0") }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PadTile(if (finding) "Procurando…" else "Procurar endereço do vídeo", Modifier.weight(1f)) {
+                        if (!finding && ip.isNotBlank()) {
+                            finding = true
+                            findResult = null
+                            scope.launch {
+                                val r = onFind(ip)
+                                finding = false
+                                if (r != null) {
+                                    rtsp = r
+                                    findResult = "Achado: $r"
+                                } else {
+                                    findResult = "Não achei sozinho. A câmera pode pedir senha no vídeo: veja o manual dela."
+                                }
+                            }
+                        }
+                    }
+                }
+                findResult?.let { Text(it, color = Palette.Soft, fontSize = 12.sp) }
                 Text(
                     "Se a câmera pede usuário e senha no vídeo, use rtsp://usuario:senha@IP:554/caminho. " +
-                        "Prefira o fluxo secundário (menor) para o celular.",
+                        "O fluxo secundário (ex.: /live/av1 em vez de /live/av0) é menor e chega um pouco mais rápido no celular.",
                     color = Palette.Muted, fontSize = 12.sp,
                 )
                 if (!valid) Text("Preencha o IP, a porta (1 a 65535) e o endereço VISCA (1 a 7).", color = Palette.Amber, fontSize = 12.sp)

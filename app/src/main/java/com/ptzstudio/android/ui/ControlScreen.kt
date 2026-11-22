@@ -91,9 +91,11 @@ fun ControlScreen(engine: Engine, onCameras: () -> Unit, onSettings: () -> Unit)
         androidx.activity.compose.BackHandler { fullscreen = false }
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             RtspVideo(rtsp, Modifier.fillMaxSize())
-            TextButton(onClick = { fullscreen = false }, modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                Text("Sair da tela cheia", color = Color.White)
-            }
+            VideoOverlay(
+                fullscreen = true,
+                onToggleFullscreen = { fullscreen = false },
+                onVideoOff = { fullscreen = false; engine.setVideoEnabled(false) },
+            )
         }
         return
     }
@@ -217,13 +219,7 @@ private fun VideoCard(engine: Engine, settings: AppSettings, modifier: Modifier,
             }
             else -> {
                 RtspVideo(rtsp, Modifier.fillMaxSize())
-                Row(
-                    Modifier.align(Alignment.BottomEnd).padding(8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    PadTile("Desligar", Modifier.width(90.dp)) { engine.setVideoEnabled(false) }
-                    PadTile("Tela cheia", Modifier.width(100.dp), onClick = onFullscreen)
-                }
+                VideoOverlay(fullscreen = false, onToggleFullscreen = onFullscreen, onVideoOff = { engine.setVideoEnabled(false) })
             }
         }
     }

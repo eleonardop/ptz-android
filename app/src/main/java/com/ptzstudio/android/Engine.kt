@@ -18,6 +18,7 @@ import com.ptzstudio.android.core.CameraConfig
 import com.ptzstudio.android.core.CameraProbe
 import com.ptzstudio.android.core.DefaultMapping
 import com.ptzstudio.android.core.FoundCamera
+import com.ptzstudio.android.core.RtspFinder
 import com.ptzstudio.android.core.MappingEngine
 import com.ptzstudio.android.core.MotionConfig
 import com.ptzstudio.android.core.PadAction
@@ -31,6 +32,8 @@ import com.ptzstudio.android.core.ViscaReplies
 import com.ptzstudio.android.core.ViscaUdpClient
 import com.ptzstudio.android.core.WsDiscovery
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -501,12 +504,28 @@ class Engine(private val context: Context) {
         val lock = wifi?.createMulticastLock("ptz-descoberta")?.apply { setReferenceCounted(false) }
         try {
             lock?.acquire()
-            WsDiscovery.discover(3000, ::bindToWifi)
+            val list = WsDiscovery.discover(3000, ::bindToWifi)
+            // Para cada câmera achada, já descobre o endereço do vídeo (em paralelo).
+            list.map { f -> async { f.copy(rtspUrl = findRtspBlocking(f.ip, f.xaddr).orEmpty()) } }.awaitAll()
         } catch (_: Exception) {
             emptyList()
         } finally {
             try { lock?.release() } catch (_: Exception) {}
         }
+    }
+
+    private fun findRtspBlocking(ip: String, xaddr: String?): String? {
+        val net = wifiNetwork
+        val open = { u: java.net.URL -> net?.openConnection(u) ?: u.openConnection() }
+        val sock = { net?.socketFactory?.createSocket() ?: java.net.Socket() }
+        val candidates = listOfNotNull(xaddr, "http://$ip/onvif/device_service", "http://$ip:8899/onvif/device_service").distinct()
+        for (x in candidates) RtspFinder.viaOnvif(x, ip, open, 1500)?.let { return it }
+        return RtspFinder.viaProbe(ip, sock)
+    }
+
+    /** Procura o endereço RTSP do vídeo de uma câmera pelo IP (botão no cadastro). */
+    suspend fun findRtsp(ip: String): String? = withContext(Dispatchers.IO) {
+        if (ip.isBlank()) null else try { findRtspBlocking(ip.trim(), null) } catch (_: Exception) { null }
     }
 
     // ---------------- Controle físico ----------------

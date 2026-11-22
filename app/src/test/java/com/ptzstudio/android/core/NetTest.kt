@@ -92,6 +92,7 @@ class NetTest {
         assertNotNull(f)
         assertEquals("192.168.4.163", f!!.ip)
         assertEquals("PTZ Camera", f.name)
+        assertEquals("http://192.168.4.163:8899/onvif/device_service", f.xaddr)
     }
 
     @Test
