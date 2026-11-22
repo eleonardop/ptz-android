@@ -584,10 +584,12 @@ class Engine(private val context: Context) {
     val padPulse: StateFlow<String?> = _padPulse.asStateFlow()
 
     /** A cada 3 minutos manda um sinal de vibração zero ao controle, para ele não desligar sozinho por inatividade. */
-    private val padKeepAlive = object : Runnable {
-        override fun run() {
-            if (_settings.value.keepPadAwake) pulsePads()
-            main.postDelayed(this, PAD_KEEPALIVE_MS)
+    private val padKeepAlive: Runnable by lazy {
+        object : Runnable {
+            override fun run() {
+                if (_settings.value.keepPadAwake) pulsePads()
+                main.postDelayed(this, PAD_KEEPALIVE_MS)
+            }
         }
     }
 
